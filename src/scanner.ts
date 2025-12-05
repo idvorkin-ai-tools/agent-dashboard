@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
-import type { AgentInfo, BeadsStatus, PullRequest, ScanResult, Server } from './types.js';
+import type { AgentInfo, BeadsStatus, GitHubLinks, PullRequest, ScanResult, Server } from './types.js';
 
 const GITS_DIR = process.env.GITS_DIR || join(process.env.HOME || '', 'gits');
 
@@ -95,7 +95,14 @@ function getRunningServers(): Map<string, Server[]> {
   return serversByDir;
 }
 
-function getGitInfo(dir: string): { branch: string; repo: string; lastCommit: string; lastCommitTime: string } {
+function getGitInfo(dir: string): {
+  branch: string;
+  repo: string;
+  lastCommit: string;
+  lastCommitHash: string;
+  lastCommitTime: string;
+  defaultBranch: string;
+} {
   const branch = exec('git branch --show-current', dir) || 'unknown';
   const remoteUrl = exec('git remote get-url origin 2>/dev/null', dir) || '';
 
@@ -105,9 +112,28 @@ function getGitInfo(dir: string): { branch: string; repo: string; lastCommit: st
   if (httpsMatch) repo = httpsMatch[1];
 
   const lastCommit = exec('git log -1 --format="%s" 2>/dev/null', dir) || '';
+  const lastCommitHash = exec('git log -1 --format="%H" 2>/dev/null', dir) || '';
   const lastCommitTime = exec('git log -1 --format="%cr" 2>/dev/null', dir) || '';
 
-  return { branch, repo, lastCommit, lastCommitTime };
+  // Try to detect default branch (main or dev)
+  const defaultBranch = exec('git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null', dir)
+    ?.replace('refs/remotes/origin/', '') || 'main';
+
+  return { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch };
+}
+
+function getGitHubLinks(repo: string, branch: string, defaultBranch: string, commitHash: string): GitHubLinks | undefined {
+  if (!repo || !repo.includes('/')) return undefined;
+
+  const baseUrl = `https://github.com/${repo}`;
+
+  return {
+    repoUrl: baseUrl,
+    branchUrl: `${baseUrl}/tree/${branch}`,
+    diffUrl: `${baseUrl}/compare/${defaultBranch}...${branch}`,
+    commitsUrl: `${baseUrl}/commits/${branch}`,
+    lastCommitUrl: commitHash ? `${baseUrl}/commit/${commitHash}` : `${baseUrl}/commits/${branch}`
+  };
 }
 
 function getPRInfo(dir: string): PullRequest | undefined {
@@ -178,7 +204,7 @@ export function scan(): ScanResult {
 
   for (const dir of agentDirs) {
     const id = dir.split('/').pop() || '';
-    const { branch, repo, lastCommit, lastCommitTime } = getGitInfo(dir);
+    const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = getGitInfo(dir);
     const servers = runningServers.get(dir) || [];
 
     // Add Tailscale URLs to servers
@@ -197,7 +223,9 @@ export function scan(): ScanResult {
       servers,
       beads: getBeadsStatus(dir),
       lastCommit,
+      lastCommitHash,
       lastCommitTime,
+      github: getGitHubLinks(repo, branch, defaultBranch, lastCommitHash),
       status: servers.length > 0 ? 'active' : 'idle'
     };
 

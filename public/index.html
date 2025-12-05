@@ -166,6 +166,35 @@
       color: #666;
     }
 
+    .github-links {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .github-link {
+      display: inline-block;
+      background: #2a2a4a;
+      color: #60a5fa;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 11px;
+    }
+
+    .github-link:hover {
+      background: #3a3a5a;
+    }
+
+    .github-link.diff {
+      background: #1e3a5f;
+      color: #93c5fd;
+    }
+
+    .github-link.diff:hover {
+      background: #2d4a6f;
+    }
+
     .no-agents {
       text-align: center;
       padding: 60px 20px;
@@ -268,6 +297,14 @@
              ${agent.beads.inProgressIssues.length > 0 ? `<div class="beads-issues">${agent.beads.inProgressIssues.join(', ')}</div>` : ''}`
           : '<span style="color: #666">-</span>';
 
+        const githubHtml = agent.github
+          ? `<div class="github-links">
+               <a class="github-link diff" href="${agent.github.diffUrl}" target="_blank" title="Compare ${agent.branch} to main">Diff</a>
+               <a class="github-link" href="${agent.github.lastCommitUrl}" target="_blank" title="View last commit">Commit</a>
+               <a class="github-link" href="${agent.github.commitsUrl}" target="_blank" title="View all commits on ${agent.branch}">History</a>
+             </div>`
+          : '<span style="color: #666">-</span>';
+
         return `
           <tr>
             <td>
@@ -276,6 +313,7 @@
             </td>
             <td><span class="branch">${agent.branch}</span></td>
             <td>${prHtml}</td>
+            <td>${githubHtml}</td>
             <td><div class="server-links">${serversHtml}</div></td>
             <td class="beads">${beadsHtml}</td>
             <td>
@@ -293,6 +331,7 @@
               <th>Agent</th>
               <th>Branch</th>
               <th>PR</th>
+              <th>GitHub</th>
               <th>Servers</th>
               <th>Beads</th>
               <th>Last Commit</th>
