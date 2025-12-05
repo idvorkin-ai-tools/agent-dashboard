@@ -1,9 +1,13 @@
 import express from 'express';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { watch } from 'fs';
 import { scan } from './scanner.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Track connected SSE clients for live reload
+const liveReloadClients: express.Response[] = [];
 
 export function startServer(port: number = 9999): void {
   const app = express();
@@ -27,6 +31,21 @@ export function startServer(port: number = 9999): void {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Live reload SSE endpoint
+  app.get('/api/live-reload', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    liveReloadClients.push(res);
+
+    req.on('close', () => {
+      const idx = liveReloadClients.indexOf(res);
+      if (idx !== -1) liveReloadClients.splice(idx, 1);
+    });
+  });
+
   app.listen(port, '0.0.0.0', () => {
     console.log(`Agent Dashboard running at:`);
     console.log(`  Local:     http://localhost:${port}`);
@@ -45,5 +64,27 @@ export function startServer(port: number = 9999): void {
     }
 
     console.log(`\nAPI: GET /api/agents`);
+    console.log(`Live reload enabled - watching for file changes`);
+
+    // Watch for file changes in public and src directories
+    const watchDirs = [
+      join(__dirname, '..', 'public'),
+      join(__dirname, '..', 'src')
+    ];
+
+    for (const dir of watchDirs) {
+      try {
+        watch(dir, { recursive: true }, (eventType, filename) => {
+          if (filename && !filename.endsWith('.swp')) {
+            console.log(`File changed: ${filename} - triggering reload`);
+            for (const client of liveReloadClients) {
+              client.write('data: reload\n\n');
+            }
+          }
+        });
+      } catch {
+        // Directory might not exist
+      }
+    }
   });
 }

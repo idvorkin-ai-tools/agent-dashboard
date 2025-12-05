@@ -349,6 +349,13 @@
 
     // Auto-refresh every 10 seconds
     refreshInterval = setInterval(fetchAgents, 10000);
+
+    // Live reload - listen for server file changes
+    const liveReload = new EventSource('/api/live-reload');
+    liveReload.onmessage = () => {
+      console.log('File changed, reloading...');
+      location.reload();
+    };
   </script>
 </body>
 </html>

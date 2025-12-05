@@ -80,11 +80,15 @@ function getRunningServers(): Map<string, Server[]> {
     else if (cmdline.includes('playwright')) type = 'playwright';
     else if (cmdline.includes('next')) type = 'next';
 
+    // Detect HTTPS by probing the port (quick timeout)
+    const isHttps = exec(`timeout 1 bash -c "echo | openssl s_client -connect localhost:${port} 2>/dev/null | grep -q 'CONNECTED' && echo yes" || true`) === 'yes';
+    const protocol = isHttps ? 'https' : 'http';
+
     const server: Server = {
       type,
       port,
       pid,
-      url: `http://localhost:${port}`
+      url: `${protocol}://localhost:${port}`
     };
 
     const existing = serversByDir.get(agentDir) || [];
@@ -207,10 +211,11 @@ export function scan(): ScanResult {
     const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = getGitInfo(dir);
     const servers = runningServers.get(dir) || [];
 
-    // Add Tailscale URLs to servers
+    // Add Tailscale URLs to servers (preserve protocol from local URL)
     if (tailscaleHostname) {
       for (const server of servers) {
-        server.tailscaleUrl = `http://${tailscaleHostname}:${server.port}`;
+        const protocol = server.url.startsWith('https') ? 'https' : 'http';
+        server.tailscaleUrl = `${protocol}://${tailscaleHostname}:${server.port}`;
       }
     }
 
