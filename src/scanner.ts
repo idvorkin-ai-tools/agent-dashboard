@@ -96,10 +96,14 @@ function getRunningServers(agentDirs: string[]): Map<string, Server[]> {
     if (cmdline.includes('vite')) type = 'vite';
     else if (cmdline.includes('playwright')) type = 'playwright';
     else if (cmdline.includes('next')) type = 'next';
+    else if (cmdline.includes('jekyll') || (cmdline.includes('ruby') && cmdline.includes('jekyll'))) type = 'jekyll';
 
-    // Detect HTTPS by probing the port (quick timeout)
-    const isHttps = exec(`timeout 1 bash -c "echo | openssl s_client -connect localhost:${port} 2>/dev/null | grep -q 'CONNECTED' && echo yes" || true`) === 'yes';
-    const protocol = isHttps ? 'https' : 'http';
+    // Detect HTTPS by probing the port (skip for jekyll/ruby - they're typically HTTP only)
+    let protocol = 'http';
+    if (type !== 'jekyll') {
+      const isHttps = exec(`timeout 1 bash -c "echo | openssl s_client -connect localhost:${port} 2>/dev/null | grep -q 'CONNECTED' && echo yes" || true`) === 'yes';
+      protocol = isHttps ? 'https' : 'http';
+    }
 
     const server: Server = {
       type,

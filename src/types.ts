@@ -1,5 +1,5 @@
 export interface Server {
-  type: 'vite' | 'playwright' | 'next' | 'unknown';
+  type: 'vite' | 'playwright' | 'next' | 'jekyll' | 'unknown';
   port: number;
   pid: number;
   url: string;
