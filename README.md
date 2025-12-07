@@ -2,6 +2,19 @@
 
 Central portal for monitoring multi-agent dev sessions.
 
+## Requirements
+
+**System dependencies** (for server detection):
+```bash
+# Ubuntu/Debian
+sudo apt-get install lsof
+
+# macOS (pre-installed)
+# lsof is included by default
+```
+
+Without `lsof`, the dashboard will still work but won't detect running dev servers.
+
 ## Features
 
 - **Auto-discovers** agent directories in `~/gits/` (pattern: `*-N`, e.g., `swing-1`, `swing-2`)

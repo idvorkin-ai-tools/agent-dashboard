@@ -25,7 +25,7 @@ function findAgentDirectories(): string[] {
   const agentDirs: string[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
     // Match patterns like: project-1, project-2, swing-3, etc.
     if (/-\d+$/.test(entry.name)) {
