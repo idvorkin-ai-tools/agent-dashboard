@@ -249,7 +249,41 @@ function timed<T>(label: string, fn: () => T): T {
   return result;
 }
 
-export function scan(): ScanResult {
+// Process a single agent (for parallel execution)
+function processAgent(
+  dir: string,
+  runningServers: Map<string, Server[]>,
+  tailscaleHostname: string | undefined
+): AgentInfo {
+  const id = dir.split('/').pop() || '';
+  const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = getGitInfo(dir);
+  const servers = runningServers.get(dir) || [];
+
+  // Add Tailscale URLs to servers
+  if (tailscaleHostname) {
+    for (const server of servers) {
+      const protocol = server.url.startsWith('https') ? 'https' : 'http';
+      server.tailscaleUrl = `${protocol}://${tailscaleHostname}:${server.port}`;
+    }
+  }
+
+  return {
+    id,
+    directory: dir,
+    repo,
+    branch,
+    pr: getPRInfo(dir),
+    servers,
+    beads: getBeadsStatus(dir),
+    lastCommit,
+    lastCommitHash,
+    lastCommitTime,
+    github: getGitHubLinks(repo, branch, defaultBranch, lastCommitHash),
+    status: servers.length > 0 ? 'active' : 'idle'
+  };
+}
+
+export async function scan(): Promise<ScanResult> {
   const scanStart = Date.now();
 
   const agentDirs = timed('findAgentDirectories', () => findAgentDirectories());
@@ -257,38 +291,17 @@ export function scan(): ScanResult {
   const tailscaleHostname = timed('getTailscaleHostname', () => getTailscaleHostname());
   const hostname = exec('hostname') || 'localhost';
 
-  const agents: AgentInfo[] = [];
+  // Process agents in parallel
+  const agentPromises = agentDirs.map(dir =>
+    new Promise<AgentInfo>((resolve) => {
+      // Use setImmediate to allow parallel execution
+      setImmediate(() => {
+        resolve(processAgent(dir, runningServers, tailscaleHostname));
+      });
+    })
+  );
 
-  for (const dir of agentDirs) {
-    const id = dir.split('/').pop() || '';
-    const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = timed(`git:${id}`, () => getGitInfo(dir));
-    const servers = runningServers.get(dir) || [];
-
-    // Add Tailscale URLs to servers (preserve protocol from local URL)
-    if (tailscaleHostname) {
-      for (const server of servers) {
-        const protocol = server.url.startsWith('https') ? 'https' : 'http';
-        server.tailscaleUrl = `${protocol}://${tailscaleHostname}:${server.port}`;
-      }
-    }
-
-    const agent: AgentInfo = {
-      id,
-      directory: dir,
-      repo,
-      branch,
-      pr: timed(`pr:${id}`, () => getPRInfo(dir)),
-      servers,
-      beads: timed(`beads:${id}`, () => getBeadsStatus(dir)),
-      lastCommit,
-      lastCommitHash,
-      lastCommitTime,
-      github: getGitHubLinks(repo, branch, defaultBranch, lastCommitHash),
-      status: servers.length > 0 ? 'active' : 'idle'
-    };
-
-    agents.push(agent);
-  }
+  const agents = await Promise.all(agentPromises);
 
   const totalMs = Date.now() - scanStart;
   console.log(`[scan] Total: ${totalMs}ms for ${agents.length} agents`);
@@ -300,3 +313,6 @@ export function scan(): ScanResult {
     tailscaleHostname
   };
 }
+
+// Re-export types
+export type { ScanResult } from './types.js';

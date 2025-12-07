@@ -2,12 +2,31 @@ import express from 'express';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { watch } from 'fs';
-import { scan } from './scanner.js';
+import { scan, type ScanResult } from './scanner.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Track connected SSE clients for live reload
 const liveReloadClients: express.Response[] = [];
+
+// Background scan cache
+let cachedResult: ScanResult | null = null;
+let scanInProgress = false;
+const REFRESH_INTERVAL_MS = 30000; // 30 seconds
+
+async function backgroundScan(): Promise<void> {
+  if (scanInProgress) return;
+  scanInProgress = true;
+  try {
+    const result = await scan();
+    cachedResult = result;
+    console.log(`[background] Scan complete: ${result.agents.length} agents`);
+  } catch (error) {
+    console.error('[background] Scan error:', error);
+  } finally {
+    scanInProgress = false;
+  }
+}
 
 export function startServer(port: number = 9999): void {
   const app = express();
@@ -16,11 +35,21 @@ export function startServer(port: number = 9999): void {
   const publicDir = join(__dirname, '..', 'public');
   app.use(express.static(publicDir));
 
-  // API endpoint
+  // Start background scanning
+  backgroundScan(); // Initial scan
+  setInterval(backgroundScan, REFRESH_INTERVAL_MS);
+
+  // API endpoint - returns cached result immediately
   app.get('/api/agents', (_req, res) => {
     try {
-      const result = scan();
-      res.json(result);
+      if (cachedResult) {
+        res.json(cachedResult);
+      } else {
+        // First request before initial scan completes - do sync scan
+        const result = scan();
+        cachedResult = result;
+        res.json(result);
+      }
     } catch (error) {
       res.status(500).json({ error: String(error) });
     }
