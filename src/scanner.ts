@@ -109,12 +109,13 @@ function getRunningServers(agentDirs: string[]): Map<string, Server[]> {
     // Determine server type from process name
     const cmdline = exec(`cat /proc/${pid}/cmdline 2>/dev/null | tr '\\0' ' '`);
     let type: Server['type'] = 'unknown';
-    const isRubyProcess = cmdline.includes('ruby') || hasAncestorMatching(pid, /ruby|jekyll/i);
+    const isJekyllDir = agentDir.includes('idvorkin.github.io') || agentDir.includes('/blog');
+    const isRubyProcess = cmdline.includes('ruby') || hasAncestorMatching(pid, /ruby|jekyll/i) || isJekyllDir;
 
     if (cmdline.includes('vite')) type = 'vite';
     else if (cmdline.includes('playwright')) type = 'playwright';
     else if (cmdline.includes('next')) type = 'next';
-    else if (cmdline.includes('jekyll') || isRubyProcess) type = 'jekyll';
+    else if (cmdline.includes('jekyll') || isJekyllDir || isRubyProcess) type = 'jekyll';
 
     // Detect HTTPS by probing the port (skip for ruby/jekyll - they're typically HTTP only and probe can hang)
     let protocol = 'http';
