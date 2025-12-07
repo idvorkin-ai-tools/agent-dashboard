@@ -40,8 +40,17 @@ function findAgentDirectories(): string[] {
   return agentDirs.sort();
 }
 
-function getRunningServers(): Map<string, Server[]> {
+function getRunningServers(agentDirs: string[]): Map<string, Server[]> {
   const serversByDir = new Map<string, Server[]>();
+
+  // Build a map of resolved paths -> agent directories (handles symlinks)
+  const resolvedToAgent = new Map<string, string>();
+  for (const agentDir of agentDirs) {
+    const resolved = exec(`readlink -f "${agentDir}" 2>/dev/null`) || agentDir;
+    resolvedToAgent.set(resolved, agentDir);
+    // Also map the original path
+    resolvedToAgent.set(agentDir, agentDir);
+  }
 
   // Get all listening TCP ports with their PIDs
   const lsofOutput = exec('lsof -i -P -n 2>/dev/null | grep LISTEN || true');
@@ -64,14 +73,22 @@ function getRunningServers(): Map<string, Server[]> {
   // For each PID, find its working directory
   for (const [port, pid] of portToPid) {
     const cwd = exec(`readlink -f /proc/${pid}/cwd 2>/dev/null`);
-    if (!cwd || !cwd.startsWith(GITS_DIR)) continue;
+    if (!cwd) continue;
 
-    // Find the agent directory (top-level under gits)
-    const relativePath = cwd.slice(GITS_DIR.length + 1);
-    const agentName = relativePath.split('/')[0];
-    if (!agentName || !/-\d+$/.test(agentName)) continue;
+    // Check if cwd matches any agent directory (including symlink targets)
+    let agentDir = resolvedToAgent.get(cwd);
 
-    const agentDir = join(GITS_DIR, agentName);
+    // Also check if cwd is a subdirectory of an agent
+    if (!agentDir) {
+      for (const [resolved, agent] of resolvedToAgent) {
+        if (cwd.startsWith(resolved + '/') || cwd === resolved) {
+          agentDir = agent;
+          break;
+        }
+      }
+    }
+
+    if (!agentDir) continue;
 
     // Determine server type from process name
     const cmdline = exec(`cat /proc/${pid}/cmdline 2>/dev/null | tr '\\0' ' '`);
@@ -200,7 +217,7 @@ function getTailscaleHostname(): string | undefined {
 
 export function scan(): ScanResult {
   const agentDirs = findAgentDirectories();
-  const runningServers = getRunningServers();
+  const runningServers = getRunningServers(agentDirs);
   const tailscaleHostname = getTailscaleHostname();
   const hostname = exec('hostname') || 'localhost';
 
