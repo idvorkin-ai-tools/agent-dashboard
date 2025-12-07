@@ -5,12 +5,12 @@ import type { AgentInfo, BeadsStatus, GitHubLinks, PullRequest, ScanResult, Serv
 
 const GITS_DIR = process.env.GITS_DIR || join(process.env.HOME || '', 'gits');
 
-function exec(cmd: string, cwd?: string): string {
+function exec(cmd: string, cwd?: string, timeoutMs = 5000): string {
   try {
     return execSync(cmd, {
       cwd,
       encoding: 'utf-8',
-      timeout: 5000,
+      timeout: timeoutMs,
       stdio: ['pipe', 'pipe', 'pipe']
     }).trim();
   } catch {
@@ -181,7 +181,8 @@ function getGitHubLinks(repo: string, branch: string, defaultBranch: string, com
 }
 
 function getPRInfo(dir: string): PullRequest | undefined {
-  const prJson = exec('gh pr view --json number,url,title,state 2>/dev/null', dir);
+  // Short timeout for GitHub API - if it's slow, skip it
+  const prJson = exec('gh pr view --json number,url,title,state 2>/dev/null', dir, 2000);
   if (!prJson) return undefined;
 
   try {
@@ -200,16 +201,16 @@ function getPRInfo(dir: string): PullRequest | undefined {
 function getBeadsStatus(dir: string): BeadsStatus | undefined {
   if (!existsSync(join(dir, '.beads'))) return undefined;
 
-  // Get stats
-  const statsOutput = exec('bd stats 2>/dev/null', dir);
+  // Get stats (short timeout - beads should respond quickly if DB is healthy)
+  const statsOutput = exec('bd stats 2>/dev/null', dir, 1000);
   if (!statsOutput) return undefined;
 
   const openMatch = statsOutput.match(/Open:\s+(\d+)/);
   const inProgressMatch = statsOutput.match(/In Progress:\s+(\d+)/);
   const closedMatch = statsOutput.match(/Closed:\s+(\d+)/);
 
-  // Get in-progress issue IDs
-  const listOutput = exec('bd list --status=in_progress 2>/dev/null', dir);
+  // Get in-progress issue IDs (also short timeout)
+  const listOutput = exec('bd list --status=in_progress 2>/dev/null', dir, 1000);
   const inProgressIssues: string[] = [];
   if (listOutput) {
     const matches = listOutput.matchAll(/^([\w-]+)\s/gm);
@@ -238,17 +239,29 @@ function getTailscaleHostname(): string | undefined {
   }
 }
 
+function timed<T>(label: string, fn: () => T): T {
+  const start = Date.now();
+  const result = fn();
+  const elapsed = Date.now() - start;
+  if (elapsed > 100) {  // Only log slow operations (>100ms)
+    console.log(`[scan] ${label}: ${elapsed}ms`);
+  }
+  return result;
+}
+
 export function scan(): ScanResult {
-  const agentDirs = findAgentDirectories();
-  const runningServers = getRunningServers(agentDirs);
-  const tailscaleHostname = getTailscaleHostname();
+  const scanStart = Date.now();
+
+  const agentDirs = timed('findAgentDirectories', () => findAgentDirectories());
+  const runningServers = timed('getRunningServers', () => getRunningServers(agentDirs));
+  const tailscaleHostname = timed('getTailscaleHostname', () => getTailscaleHostname());
   const hostname = exec('hostname') || 'localhost';
 
   const agents: AgentInfo[] = [];
 
   for (const dir of agentDirs) {
     const id = dir.split('/').pop() || '';
-    const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = getGitInfo(dir);
+    const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = timed(`git:${id}`, () => getGitInfo(dir));
     const servers = runningServers.get(dir) || [];
 
     // Add Tailscale URLs to servers (preserve protocol from local URL)
@@ -264,9 +277,9 @@ export function scan(): ScanResult {
       directory: dir,
       repo,
       branch,
-      pr: getPRInfo(dir),
+      pr: timed(`pr:${id}`, () => getPRInfo(dir)),
       servers,
-      beads: getBeadsStatus(dir),
+      beads: timed(`beads:${id}`, () => getBeadsStatus(dir)),
       lastCommit,
       lastCommitHash,
       lastCommitTime,
@@ -276,6 +289,9 @@ export function scan(): ScanResult {
 
     agents.push(agent);
   }
+
+  const totalMs = Date.now() - scanStart;
+  console.log(`[scan] Total: ${totalMs}ms for ${agents.length} agents`);
 
   return {
     agents,
