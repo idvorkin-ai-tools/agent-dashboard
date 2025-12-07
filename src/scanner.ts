@@ -18,6 +18,22 @@ function exec(cmd: string, cwd?: string): string {
   }
 }
 
+// Check if any ancestor process matches a pattern (e.g., ruby, jekyll)
+function hasAncestorMatching(pid: number, pattern: RegExp, maxDepth = 5): boolean {
+  let currentPid = pid;
+  for (let i = 0; i < maxDepth; i++) {
+    const ppid = exec(`cat /proc/${currentPid}/stat 2>/dev/null | awk '{print $4}'`);
+    if (!ppid || ppid === '1' || ppid === '0') break;
+
+    const parentCmdline = exec(`cat /proc/${ppid}/cmdline 2>/dev/null | tr '\\0' ' '`);
+    if (pattern.test(parentCmdline)) return true;
+
+    currentPid = parseInt(ppid, 10);
+    if (isNaN(currentPid)) break;
+  }
+  return false;
+}
+
 function findAgentDirectories(): string[] {
   if (!existsSync(GITS_DIR)) return [];
 
@@ -93,14 +109,16 @@ function getRunningServers(agentDirs: string[]): Map<string, Server[]> {
     // Determine server type from process name
     const cmdline = exec(`cat /proc/${pid}/cmdline 2>/dev/null | tr '\\0' ' '`);
     let type: Server['type'] = 'unknown';
+    const isRubyProcess = cmdline.includes('ruby') || hasAncestorMatching(pid, /ruby|jekyll/i);
+
     if (cmdline.includes('vite')) type = 'vite';
     else if (cmdline.includes('playwright')) type = 'playwright';
     else if (cmdline.includes('next')) type = 'next';
-    else if (cmdline.includes('jekyll') || (cmdline.includes('ruby') && cmdline.includes('jekyll'))) type = 'jekyll';
+    else if (cmdline.includes('jekyll') || isRubyProcess) type = 'jekyll';
 
-    // Detect HTTPS by probing the port (skip for jekyll/ruby - they're typically HTTP only)
+    // Detect HTTPS by probing the port (skip for ruby/jekyll - they're typically HTTP only and probe can hang)
     let protocol = 'http';
-    if (type !== 'jekyll') {
+    if (!isRubyProcess) {
       const isHttps = exec(`timeout 1 bash -c "echo | openssl s_client -connect localhost:${port} 2>/dev/null | grep -q 'CONNECTED' && echo yes" || true`) === 'yes';
       protocol = isHttps ? 'https' : 'http';
     }
