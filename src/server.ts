@@ -13,6 +13,7 @@ const liveReloadClients: express.Response[] = [];
 let cachedResult: ScanResult | null = null;
 let scanInProgress = false;
 const REFRESH_INTERVAL_MS = 30000; // 30 seconds
+const HOURLY_RELOAD_MS = 60 * 60 * 1000; // 1 hour
 
 async function backgroundScan(): Promise<void> {
   if (scanInProgress) return;
@@ -38,6 +39,14 @@ export function startServer(port: number = 9999): void {
   // Start background scanning
   backgroundScan(); // Initial scan
   setInterval(backgroundScan, REFRESH_INTERVAL_MS);
+
+  // Force page reload hourly to clean up any client-side memory leaks
+  setInterval(() => {
+    console.log('[hourly] Triggering client reload for memory cleanup');
+    for (const client of liveReloadClients) {
+      client.write('data: reload\n\n');
+    }
+  }, HOURLY_RELOAD_MS);
 
   // API endpoint - returns cached result immediately
   app.get('/api/agents', (_req, res) => {
