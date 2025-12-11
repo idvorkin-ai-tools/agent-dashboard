@@ -49,13 +49,13 @@ export function startServer(port: number = 9999): void {
   }, HOURLY_RELOAD_MS);
 
   // API endpoint - returns cached result immediately
-  app.get('/api/agents', (_req, res) => {
+  app.get('/api/agents', async (_req, res) => {
     try {
       if (cachedResult) {
         res.json(cachedResult);
       } else {
-        // First request before initial scan completes - do sync scan
-        const result = scan();
+        // First request before initial scan completes - wait for scan
+        const result = await scan();
         cachedResult = result;
         res.json(result);
       }

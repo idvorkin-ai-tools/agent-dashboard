@@ -39,6 +39,7 @@ export interface AgentInfo {
   lastCommit: string;
   lastCommitHash: string;
   lastCommitTime: string;
+  lastCommitTimestamp: number;
   github?: GitHubLinks;
   status: 'active' | 'idle';
 }

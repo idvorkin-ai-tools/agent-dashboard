@@ -145,6 +145,7 @@ function getGitInfo(dir: string): {
   lastCommit: string;
   lastCommitHash: string;
   lastCommitTime: string;
+  lastCommitTimestamp: number;
   defaultBranch: string;
 } {
   const branch = exec('git branch --show-current', dir) || 'unknown';
@@ -158,12 +159,13 @@ function getGitInfo(dir: string): {
   const lastCommit = exec('git log -1 --format="%s" 2>/dev/null', dir) || '';
   const lastCommitHash = exec('git log -1 --format="%H" 2>/dev/null', dir) || '';
   const lastCommitTime = exec('git log -1 --format="%cr" 2>/dev/null', dir) || '';
+  const lastCommitTimestamp = parseInt(exec('git log -1 --format="%ct" 2>/dev/null', dir) || '0', 10);
 
   // Try to detect default branch (main or dev)
   const defaultBranch = exec('git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null', dir)
     ?.replace('refs/remotes/origin/', '') || 'main';
 
-  return { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch };
+  return { branch, repo, lastCommit, lastCommitHash, lastCommitTime, lastCommitTimestamp, defaultBranch };
 }
 
 function getGitHubLinks(repo: string, branch: string, defaultBranch: string, commitHash: string): GitHubLinks | undefined {
@@ -256,7 +258,7 @@ function processAgent(
   tailscaleHostname: string | undefined
 ): AgentInfo {
   const id = dir.split('/').pop() || '';
-  const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, defaultBranch } = getGitInfo(dir);
+  const { branch, repo, lastCommit, lastCommitHash, lastCommitTime, lastCommitTimestamp, defaultBranch } = getGitInfo(dir);
   const servers = runningServers.get(dir) || [];
 
   // Add Tailscale URLs to servers
@@ -278,6 +280,7 @@ function processAgent(
     lastCommit,
     lastCommitHash,
     lastCommitTime,
+    lastCommitTimestamp,
     github: getGitHubLinks(repo, branch, defaultBranch, lastCommitHash),
     status: servers.length > 0 ? 'active' : 'idle'
   };
