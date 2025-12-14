@@ -43,13 +43,10 @@ function findAgentDirectories(): string[] {
   for (const entry of entries) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
-    // Match patterns like: project-1, project-2, swing-3, etc.
-    if (/-\d+$/.test(entry.name)) {
-      const fullPath = join(GITS_DIR, entry.name);
-      // Verify it's a git repo
-      if (existsSync(join(fullPath, '.git'))) {
-        agentDirs.push(fullPath);
-      }
+    const fullPath = join(GITS_DIR, entry.name);
+    // Include all git repos
+    if (existsSync(join(fullPath, '.git'))) {
+      agentDirs.push(fullPath);
     }
   }
 

@@ -2,6 +2,8 @@
 
 Central portal for monitoring multi-agent dev sessions.
 
+![Dashboard Screenshot](docs/dashboard-screenshot.png)
+
 ## Requirements
 
 **System dependencies** (for server detection):
@@ -17,7 +19,7 @@ Without `lsof`, the dashboard will still work but won't detect running dev serve
 
 ## Features
 
-- **Auto-discovers** agent directories in `~/gits/` (pattern: `*-N`, e.g., `swing-1`, `swing-2`)
+- **Auto-discovers** all git repositories in `~/gits/`
 - **Scans running servers** (Vite, Playwright, Next.js) by process inspection
 - **Shows git status**: branch, last commit, PR info
 - **Beads integration**: open issues, in-progress work
@@ -48,7 +50,7 @@ Environment variables:
 
 ## How It Works
 
-1. Scans `~/gits/` for directories matching `*-N` pattern
+1. Scans `~/gits/` for all git repositories
 2. For each directory:
    - Reads git branch and remote
    - Checks for open PRs via `gh pr view`
