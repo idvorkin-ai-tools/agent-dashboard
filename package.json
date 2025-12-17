@@ -7,8 +7,10 @@
     "agent-dashboard": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/cli.ts serve",
+    "build": "just build",
+    "build-called-from-just": "tsc",
+    "dev": "just dev",
+    "dev-called-from-just": "tsx src/cli.ts serve",
     "scan": "tsx src/cli.ts scan",
     "start": "node dist/cli.js serve"
   },
