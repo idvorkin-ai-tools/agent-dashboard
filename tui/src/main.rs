@@ -550,7 +550,7 @@ fn draw(frame: &mut Frame, app: &App) {
                 };
                 let status_char = match host.status {
                     ConnectionStatus::Connected => "●",
-                    ConnectionStatus::Connecting => "●",
+                    ConnectionStatus::Connecting => "◐",
                     ConnectionStatus::Disconnected => "✗",
                 };
 
