@@ -861,12 +861,13 @@ async fn main() -> Result<()> {
                 Ok(data) => {
                     app.hosts[i].data = Some(data);
                     app.hosts[i].status = ConnectionStatus::Connected;
-                    app.hosts[i].last_fetch = Some(Instant::now());
                 }
                 Err(_) => {
                     app.hosts[i].status = ConnectionStatus::Disconnected;
                 }
             }
+            // Always update last_fetch to prevent rapid retries
+            app.hosts[i].last_fetch = Some(Instant::now());
             app.recalc_column_widths();
             app.rebuild_nav();
         }
