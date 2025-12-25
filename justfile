@@ -10,7 +10,7 @@ dev:
 
 # Build TypeScript to dist/
 build:
-    npm run build-called-from-just
+    npx tsc
 
 # Run production server
 start:

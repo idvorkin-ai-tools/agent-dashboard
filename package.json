@@ -7,8 +7,8 @@
     "agent-dashboard": "./dist/cli.js"
   },
   "scripts": {
-    "build": "just build",
-    "build-called-from-just": "tsc",
+    "build": "tsc",
+    "build:pages": "echo 'Static site - no build needed'",
     "dev": "just dev",
     "dev-called-from-just": "tsx src/cli.ts serve",
     "scan": "tsx src/cli.ts scan",
