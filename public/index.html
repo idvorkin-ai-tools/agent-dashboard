@@ -370,6 +370,44 @@
       color: #666;
     }
 
+    .stale-section {
+      padding: 10px 16px;
+      background: #1a1a2a;
+      border-top: 1px solid #2a2a4a;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .stale-section:hover {
+      background: #22223a;
+    }
+
+    .stale-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #888;
+      font-size: 13px;
+    }
+
+    .stale-section .collapse-icon {
+      color: #666;
+      transition: transform 0.2s;
+      font-size: 10px;
+    }
+
+    .stale-section.collapsed .collapse-icon {
+      transform: rotate(-90deg);
+    }
+
+    .stale-table {
+      opacity: 0.7;
+    }
+
+    .stale-table tr:hover {
+      opacity: 1;
+    }
+
     /* Settings modal */
     .modal-overlay {
       position: fixed;
@@ -488,7 +526,6 @@
     </h1>
     <div class="meta">
       <div class="controls">
-        <button class="btn" id="stale-toggle" onclick="toggleShowStale()">Show Stale</button>
         <button class="btn" onclick="expandAll()">Expand All <span class="kbd">e</span></button>
         <button class="btn" onclick="collapseAll()">Collapse All <span class="kbd">c</span></button>
         <button class="btn" onclick="refreshAll()">Refresh All <span class="kbd">r</span></button>
@@ -539,7 +576,6 @@
     // State
     let hosts = [];
     let hostStates = new Map(); // url -> { status, data, error, lastFetch, refreshTimer, collapsed }
-    let showStale = false;
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
     // Load hosts from localStorage or use defaults
@@ -564,7 +600,8 @@
             error: null,
             lastFetch: null,
             refreshTimer: null,
-            collapsed: false
+            collapsed: false,
+            staleCollapsed: true
           });
         }
       });
@@ -618,31 +655,6 @@
         clearTimeout(state.refreshTimer);
       }
       state.refreshTimer = setTimeout(() => fetchHost(host), interval);
-    }
-
-    // Filter stale agents
-    function filterAgents(agents) {
-      if (showStale) return agents;
-      const now = Date.now();
-      return agents.filter(agent => {
-        const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
-        return (now - commitTime) < ONE_DAY_MS;
-      });
-    }
-
-    function getHiddenCount(agents) {
-      const now = Date.now();
-      return agents.filter(agent => {
-        const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
-        return (now - commitTime) >= ONE_DAY_MS;
-      }).length;
-    }
-
-    function toggleShowStale() {
-      showStale = !showStale;
-      document.getElementById('stale-toggle').classList.toggle('active', showStale);
-      document.getElementById('stale-toggle').textContent = showStale ? 'Hide Stale' : 'Show Stale';
-      hosts.forEach(host => renderHostSection(host));
     }
 
     // Render a single host section
@@ -702,19 +714,25 @@
         return '<div class="no-agents">No repositories found</div>';
       }
 
-      const filteredAgents = filterAgents(agents);
-      const hiddenCount = getHiddenCount(agents);
-
-      if (filteredAgents.length === 0) {
-        return `<div class="no-agents">No recent repos (${hiddenCount} stale repos hidden)</div>`;
-      }
+      const now = Date.now();
+      const recentAgents = agents.filter(agent => {
+        const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
+        return (now - commitTime) < ONE_DAY_MS;
+      });
+      const staleAgents = agents.filter(agent => {
+        const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
+        return (now - commitTime) >= ONE_DAY_MS;
+      });
 
       // Sort by last commit timestamp descending
-      const sortedAgents = [...filteredAgents].sort((a, b) =>
+      const sortedRecent = [...recentAgents].sort((a, b) =>
+        (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
+      );
+      const sortedStale = [...staleAgents].sort((a, b) =>
         (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
       );
 
-      const rows = sortedAgents.map(agent => {
+      const renderRow = (agent) => {
         const statusClass = agent.status;
         const serversHtml = agent.servers.length > 0
           ? agent.servers.map(s => {
@@ -754,25 +772,57 @@
             </td>
           </tr>
         `;
-      }).join('');
+      };
 
-      return `
-        <table>
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>Branch</th>
-              <th>PR</th>
-              <th>Servers</th>
-              <th>Beads</th>
-              <th>Last Commit</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-      `;
+      const recentRows = sortedRecent.map(renderRow).join('');
+      const staleRows = sortedStale.map(renderRow).join('');
+
+      const state = hostStates.get(host.url);
+      const staleCollapsed = state?.staleCollapsed !== false; // Default collapsed
+
+      let html = '';
+
+      if (sortedRecent.length > 0) {
+        html += `
+          <table>
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Branch</th>
+                <th>PR</th>
+                <th>Servers</th>
+                <th>Beads</th>
+                <th>Last Commit</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${recentRows}
+            </tbody>
+          </table>
+        `;
+      } else {
+        html += '<div class="no-agents">No recent repos</div>';
+      }
+
+      if (sortedStale.length > 0) {
+        html += `
+          <div class="stale-section ${staleCollapsed ? 'collapsed' : ''}" onclick="toggleStale('${host.url}')">
+            <div class="stale-header">
+              <span class="collapse-icon">&#9660;</span>
+              <span>Stale Repos (${sortedStale.length})</span>
+            </div>
+          </div>
+          ${!staleCollapsed ? `
+            <table class="stale-table">
+              <tbody>
+                ${staleRows}
+              </tbody>
+            </table>
+          ` : ''}
+        `;
+      }
+
+      return html;
     }
 
     // Toggle host collapse
@@ -780,6 +830,17 @@
       const state = hostStates.get(url);
       if (state) {
         state.collapsed = !state.collapsed;
+        const host = hosts.find(h => h.url === url);
+        if (host) renderHostSection(host);
+      }
+    }
+
+    // Toggle stale repos section
+    function toggleStale(url) {
+      event.stopPropagation();
+      const state = hostStates.get(url);
+      if (state) {
+        state.staleCollapsed = !state.staleCollapsed;
         const host = hosts.find(h => h.url === url);
         if (host) renderHostSection(host);
       }
@@ -874,7 +935,8 @@
           error: null,
           lastFetch: null,
           refreshTimer: null,
-          collapsed: false
+          collapsed: false,
+          staleCollapsed: true
         });
       });
       hostStates = newStates;
