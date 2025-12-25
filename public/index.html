@@ -728,14 +728,6 @@
              ${agent.beads.inProgress > 0 ? `<span class="beads-count in-progress">${agent.beads.inProgress} WIP</span>` : ''}`
           : '<span style="color: #666">-</span>';
 
-        const githubHtml = agent.github
-          ? `<div class="github-links">
-               <a class="github-link diff" href="${agent.github.diffUrl}" target="_blank" title="Diff">D</a>
-               <a class="github-link" href="${agent.github.lastCommitUrl}" target="_blank" title="Commit">C</a>
-               <a class="github-link" href="${agent.github.commitsUrl}" target="_blank" title="History">H</a>
-             </div>`
-          : '<span style="color: #666">-</span>';
-
         return `
           <tr>
             <td>
@@ -744,7 +736,6 @@
             </td>
             <td><span class="branch">${escapeHtml(agent.branch)}</span></td>
             <td>${prHtml}</td>
-            <td>${githubHtml}</td>
             <td><div class="server-links">${serversHtml}</div></td>
             <td class="beads">${beadsHtml}</td>
             <td>
@@ -762,7 +753,6 @@
               <th>Agent</th>
               <th>Branch</th>
               <th>PR</th>
-              <th>GitHub</th>
               <th>Servers</th>
               <th>Beads</th>
               <th>Last Commit</th>
