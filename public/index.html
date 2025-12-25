@@ -251,6 +251,13 @@
       padding: 2px 8px;
       border-radius: 4px;
       font-size: 13px;
+      text-decoration: none;
+      color: #eee;
+    }
+
+    a.branch:hover {
+      background: #3a3a5a;
+      color: #60a5fa;
     }
 
     .pr-link {
@@ -734,7 +741,10 @@
               <span class="status ${statusClass}"></span>
               <span class="agent-id">${escapeHtml(agent.id)}</span>
             </td>
-            <td><span class="branch">${escapeHtml(agent.branch)}</span></td>
+            <td>${agent.github
+              ? `<a href="${agent.github.diffUrl}" target="_blank" class="branch">${escapeHtml(agent.branch)}</a>`
+              : `<span class="branch">${escapeHtml(agent.branch)}</span>`
+            }</td>
             <td>${prHtml}</td>
             <td><div class="server-links">${serversHtml}</div></td>
             <td class="beads">${beadsHtml}</td>
