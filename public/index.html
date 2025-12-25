@@ -579,12 +579,12 @@
   </div>
 
   <script>
-    // Default hosts - C-5001 through C-5004 are tailscale hostnames (capital C)
+    // Default hosts - Tailscale MagicDNS requires full domain
     const DEFAULT_HOSTS = [
-      { name: 'C-5001', url: 'http://C-5001:9999' },
-      { name: 'C-5002', url: 'http://C-5002:9999' },
-      { name: 'C-5003', url: 'http://C-5003:9999' },
-      { name: 'C-5004', url: 'http://C-5004:9999' },
+      { name: 'C-5001', url: 'http://c-5001.squeaker-teeth.ts.net:9999' },
+      { name: 'C-5002', url: 'http://c-5002.squeaker-teeth.ts.net:9999' },
+      { name: 'C-5003', url: 'http://c-5003.squeaker-teeth.ts.net:9999' },
+      { name: 'C-5004', url: 'http://c-5004.squeaker-teeth.ts.net:9999' },
     ];
 
     const STORAGE_KEY = 'agent-dashboard-hosts';

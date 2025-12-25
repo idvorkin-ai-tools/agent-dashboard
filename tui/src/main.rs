@@ -433,12 +433,12 @@ fn load_config() -> Vec<HostConfig> {
         }
     }
 
-    // Default hosts (Tailscale hostnames use capital C)
+    // Default hosts (Tailscale MagicDNS requires full domain)
     vec![
-        HostConfig { name: "C-5001".to_string(), url: "http://C-5001:9999".to_string() },
-        HostConfig { name: "C-5002".to_string(), url: "http://C-5002:9999".to_string() },
-        HostConfig { name: "C-5003".to_string(), url: "http://C-5003:9999".to_string() },
-        HostConfig { name: "C-5004".to_string(), url: "http://C-5004:9999".to_string() },
+        HostConfig { name: "C-5001".to_string(), url: "http://c-5001.squeaker-teeth.ts.net:9999".to_string() },
+        HostConfig { name: "C-5002".to_string(), url: "http://c-5002.squeaker-teeth.ts.net:9999".to_string() },
+        HostConfig { name: "C-5003".to_string(), url: "http://c-5003.squeaker-teeth.ts.net:9999".to_string() },
+        HostConfig { name: "C-5004".to_string(), url: "http://c-5004.squeaker-teeth.ts.net:9999".to_string() },
     ]
 }
 
