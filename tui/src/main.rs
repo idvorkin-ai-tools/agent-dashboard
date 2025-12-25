@@ -1,12 +1,12 @@
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,25 +19,19 @@ use std::{
 };
 
 // Types matching the server API
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Server {
     #[serde(rename = "type")]
     server_type: String,
     port: u16,
     url: String,
-    #[serde(default)]
-    tailscale_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GitHubLinks {
-    repo_url: Option<String>,
     branch_url: Option<String>,
-    diff_url: Option<String>,
-    commits_url: Option<String>,
-    last_commit_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,21 +45,23 @@ struct AgentInfo {
     last_commit_time: String,
     last_commit_timestamp: i64,
     github: Option<GitHubLinks>,
-    status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ScanResult {
     agents: Vec<AgentInfo>,
-    hostname: String,
-    scanned_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct HostConfig {
     name: String,
     url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Config {
+    hosts: Vec<HostConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,10 +77,8 @@ struct HostData {
     status: ConnectionStatus,
     data: Option<ScanResult>,
     last_fetch: Option<Instant>,
-    error: Option<String>,
 }
 
-// Navigation items
 #[derive(Debug, Clone)]
 enum NavItem {
     HostHeader(usize),
@@ -95,16 +89,30 @@ enum NavItem {
     StaleRepo(usize, usize),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum OverlayMode {
+    None,
+    Help,
+    Search,
+    ServerPicker(Vec<Server>),
+}
+
 struct App {
     hosts: Vec<HostData>,
     nav_items: Vec<NavItem>,
     selected: usize,
     filter: String,
-    show_help: bool,
+    search_input: String,
+    overlay: OverlayMode,
+    server_picker_state: ListState,
     host_expanded: HashMap<usize, bool>,
     stale_servers_expanded: HashMap<usize, bool>,
     stale_repos_expanded: HashMap<usize, bool>,
     last_key: Option<char>,
+    // Dynamic column widths
+    col_width_name: usize,
+    col_width_branch: usize,
+    col_width_server: usize,
 }
 
 impl App {
@@ -116,7 +124,6 @@ impl App {
                 status: ConnectionStatus::Connecting,
                 data: None,
                 last_fetch: None,
-                error: None,
             })
             .collect();
 
@@ -135,20 +142,50 @@ impl App {
             nav_items: vec![],
             selected: 0,
             filter: String::new(),
-            show_help: false,
+            search_input: String::new(),
+            overlay: OverlayMode::None,
+            server_picker_state: ListState::default(),
             host_expanded,
             stale_servers_expanded,
             stale_repos_expanded,
             last_key: None,
+            col_width_name: 18,
+            col_width_branch: 14,
+            col_width_server: 18,
         };
         app.rebuild_nav();
         app
     }
 
+    fn recalc_column_widths(&mut self) {
+        let mut max_name = 8usize;
+        let mut max_branch = 6usize;
+        let mut max_server = 6usize;
+
+        for host in &self.hosts {
+            if let Some(data) = &host.data {
+                for agent in &data.agents {
+                    max_name = max_name.max(agent.id.len());
+                    max_branch = max_branch.max(agent.branch.len());
+                    if !agent.servers.is_empty() {
+                        let server_str: String = agent.servers.iter()
+                            .map(|s| format!("{}:{}", s.server_type, s.port))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        max_server = max_server.max(server_str.len());
+                    }
+                }
+            }
+        }
+
+        self.col_width_name = max_name.min(25) + 1;
+        self.col_width_branch = max_branch.min(20) + 1;
+        self.col_width_server = max_server.min(25) + 1;
+    }
+
     fn rebuild_nav(&mut self) {
         self.nav_items.clear();
 
-        // Sort hosts: connected first, then connecting, then disconnected
         let mut host_order: Vec<usize> = (0..self.hosts.len()).collect();
         host_order.sort_by_key(|&i| match self.hosts[i].status {
             ConnectionStatus::Connected => 0,
@@ -169,7 +206,6 @@ impl App {
                 continue;
             }
 
-            // Collect indices upfront to avoid borrow issues
             let (fresh_indices, stale_server_indices, stale_indices) = {
                 let filter = &self.filter;
                 if let Some(data) = &self.hosts[host_idx].data {
@@ -207,12 +243,10 @@ impl App {
                 }
             };
 
-            // Fresh repos
             for idx in &fresh_indices {
                 self.nav_items.push(NavItem::Repo(host_idx, *idx));
             }
 
-            // Stale with servers
             if !stale_server_indices.is_empty() {
                 self.nav_items.push(NavItem::StaleServersHeader(host_idx));
                 if self.stale_servers_expanded.get(&host_idx).copied().unwrap_or(true) {
@@ -222,7 +256,6 @@ impl App {
                 }
             }
 
-            // Stale repos
             if !stale_indices.is_empty() {
                 self.nav_items.push(NavItem::StaleReposHeader(host_idx));
                 if self.stale_repos_expanded.get(&host_idx).copied().unwrap_or(false) {
@@ -233,7 +266,6 @@ impl App {
             }
         }
 
-        // Clamp selection
         if self.selected >= self.nav_items.len() && !self.nav_items.is_empty() {
             self.selected = self.nav_items.len() - 1;
         }
@@ -245,7 +277,6 @@ impl App {
             NavItem::Repo(host_idx, idx)
             | NavItem::StaleServerRepo(host_idx, idx)
             | NavItem::StaleRepo(host_idx, idx) => {
-                // idx is the original index into agents array
                 self.hosts.get(*host_idx)?.data.as_ref()?.agents.get(*idx)
             }
             _ => None,
@@ -368,21 +399,37 @@ impl App {
             self.selected = last;
         }
     }
+
+    fn apply_search_filter(&mut self) {
+        self.filter = self.search_input.clone();
+        self.rebuild_nav();
+    }
+
+    fn open_server_picker(&mut self) {
+        if let Some(agent) = self.get_selected_agent() {
+            if agent.servers.len() > 1 {
+                self.overlay = OverlayMode::ServerPicker(agent.servers.clone());
+                self.server_picker_state.select(Some(0));
+            } else if let Some(server) = agent.servers.first() {
+                open_browser(&server.url);
+            }
+        }
+    }
 }
 
 fn load_config() -> Vec<HostConfig> {
     let config_path = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("agent-dashboard")
-        .join("hosts.json");
+        .join("hosts.toml");
 
     if let Ok(content) = fs::read_to_string(&config_path) {
-        if let Ok(hosts) = serde_json::from_str::<Vec<HostConfig>>(&content) {
-            return hosts;
+        if let Ok(config) = toml::from_str::<Config>(&content) {
+            return config.hosts;
         }
     }
 
-    // Default hosts
+    // Default hosts (same as web)
     vec![
         HostConfig { name: "c-5001".to_string(), url: "http://c-5001:9999".to_string() },
         HostConfig { name: "c-5002".to_string(), url: "http://c-5002:9999".to_string() },
@@ -433,8 +480,25 @@ fn open_editor(path: &str) {
 fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
         .split(frame.area());
+
+    // Header with search/filter
+    let header = if !app.filter.is_empty() {
+        Line::from(vec![
+            Span::styled("filter> ", Style::default().fg(Color::Yellow)),
+            Span::styled(&app.filter, Style::default().fg(Color::Yellow)),
+            Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc:clear  /:search", Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("agent-dashboard", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled("/:search  ?:help  q:quit", Style::default().fg(Color::DarkGray)),
+        ])
+    };
+    frame.render_widget(Paragraph::new(header), chunks[0]);
 
     let now_ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -447,7 +511,7 @@ fn draw(frame: &mut Frame, app: &App) {
     for (nav_idx, nav_item) in app.nav_items.iter().enumerate() {
         let is_selected = nav_idx == app.selected;
         let style = if is_selected {
-            Style::default().bg(Color::Blue).fg(Color::White)
+            Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
@@ -475,15 +539,17 @@ fn draw(frame: &mut Frame, app: &App) {
                 }).unwrap_or(0);
 
                 Line::from(vec![
-                    Span::raw(format!("{} {} ", arrow, host.config.name)),
-                    Span::raw(format!("({} repos, {} active) ", repo_count, active_count)),
                     Span::styled(status_char, Style::default().fg(status_color)),
+                    Span::raw(format!(" {} {} ", arrow, host.config.name)),
+                    Span::styled(
+                        format!("({} repos, {} active)", repo_count, active_count),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ])
             }
             NavItem::Repo(host_idx, idx)
             | NavItem::StaleServerRepo(host_idx, idx)
             | NavItem::StaleRepo(host_idx, idx) => {
-                // idx is original index into agents array
                 if let Some(agent) = app.hosts.get(*host_idx)
                     .and_then(|h| h.data.as_ref())
                     .and_then(|d| d.agents.get(*idx)) {
@@ -496,8 +562,8 @@ fn draw(frame: &mut Frame, app: &App) {
                             .join(", ")
                     };
 
-                    let commit = if agent.last_commit.len() > 30 {
-                        format!("{}...", &agent.last_commit[..27])
+                    let commit = if agent.last_commit.len() > 25 {
+                        format!("{}...", &agent.last_commit[..22])
                     } else {
                         agent.last_commit.clone()
                     };
@@ -509,18 +575,21 @@ fn draw(frame: &mut Frame, app: &App) {
                     };
 
                     Line::from(vec![
-                        Span::raw("    "),
+                        Span::raw("  "),
                         server_indicator,
                         Span::styled(
-                            format!("{:<18}", agent.id),
+                            format!("{:<width$}", agent.id, width = app.col_width_name),
                             Style::default().fg(Color::Cyan),
                         ),
-                        Span::raw(format!("{:<14}", agent.branch)),
                         Span::styled(
-                            format!("{:<18}", server_str),
+                            format!("{:<width$}", agent.branch, width = app.col_width_branch),
+                            Style::default().fg(Color::LightMagenta),
+                        ),
+                        Span::styled(
+                            format!("{:<width$}", server_str, width = app.col_width_server),
                             Style::default().fg(Color::Yellow),
                         ),
-                        Span::raw(format!("{:<25}", commit)),
+                        Span::raw(format!("{:<20}", commit)),
                         Span::styled(
                             agent.last_commit_time.clone(),
                             Style::default().fg(Color::DarkGray),
@@ -566,49 +635,145 @@ fn draw(frame: &mut Frame, app: &App) {
     }
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" agent-dashboard "));
-
-    frame.render_widget(list, chunks[0]);
+        .block(Block::default().borders(Borders::ALL))
+        .highlight_symbol("▶ ");
+    frame.render_widget(list, chunks[1]);
 
     // Status bar
-    let filter_text = if app.filter.is_empty() {
-        String::new()
-    } else {
-        format!("filter> {} ", app.filter)
-    };
-    let status = format!(
-        "{}↑↓:nav  Enter:open  o:browser  s:server  e:editor  ?:help  q:quit",
-        filter_text
-    );
-    let status_bar = Paragraph::new(status).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(status_bar, chunks[1]);
+    let status = Line::from(vec![
+        Span::styled("↑↓", Style::default().fg(Color::Yellow)),
+        Span::styled(":nav ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::styled(":term ", Style::default().fg(Color::DarkGray)),
+        Span::styled("o", Style::default().fg(Color::Yellow)),
+        Span::styled(":github ", Style::default().fg(Color::DarkGray)),
+        Span::styled("s", Style::default().fg(Color::Yellow)),
+        Span::styled(":server ", Style::default().fg(Color::DarkGray)),
+        Span::styled("e", Style::default().fg(Color::Yellow)),
+        Span::styled(":editor ", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(Color::Yellow)),
+        Span::styled(":refresh ", Style::default().fg(Color::DarkGray)),
+        Span::styled("1-9", Style::default().fg(Color::Yellow)),
+        Span::styled(":host", Style::default().fg(Color::DarkGray)),
+    ]);
+    frame.render_widget(Paragraph::new(status), chunks[2]);
 
-    // Help overlay
-    if app.show_help {
-        let help_text = r#"
+    // Overlays
+    match &app.overlay {
+        OverlayMode::Help => draw_help_overlay(frame),
+        OverlayMode::Search => draw_search_overlay(frame, &app.search_input),
+        OverlayMode::ServerPicker(servers) => draw_server_picker(frame, servers, &app.server_picker_state),
+        OverlayMode::None => {}
+    }
+}
+
+fn draw_help_overlay(frame: &mut Frame) {
+    let help_text = r#"
   agent-dashboard TUI
 
-  NAVIGATION                        ACTIONS
-    ↑/↓, j/k     Move selection       Enter   Open terminal
-    1-9          Jump to host         o       Open in browser
-    Tab          Next host            s       Open server
-    gg / G       First / Last         e       Open in editor
-    Type         Filter repos
+  NAVIGATION
+    ↑/↓, j/k, C-n/C-p   Move selection
+    1-9                  Jump to host N
+    Tab / S-Tab          Next / Previous host
+    gg / G               First / Last item
+    Enter                Toggle section / Open terminal
+
+  ACTIONS
+    o                    Open branch on GitHub
+    s                    Open server (picker if multiple)
+    e                    Open in $EDITOR
+    r / R                Refresh host / all hosts
+
+  SEARCH
+    /                    Open search popup
+    Esc                  Clear filter
 
   UTILITY
-    r / R        Refresh / Refresh all
-    ?            This help
-    q            Quit
+    ?                    This help
+    q / Esc / C-c        Quit
 
-  Press any key to close...
-"#;
-        let help_area = centered_rect(60, 60, frame.area());
-        let help = Paragraph::new(help_text)
-            .block(Block::default().borders(Borders::ALL).title(" Help "))
-            .style(Style::default().bg(Color::Black));
-        frame.render_widget(ratatui::widgets::Clear, help_area);
-        frame.render_widget(help, help_area);
-    }
+  CONFIG
+    ~/.config/agent-dashboard/hosts.toml
+
+  Press any key to close..."#;
+
+    let area = centered_rect(70, 80, frame.area());
+    let popup = Paragraph::new(help_text)
+        .style(Style::default().fg(Color::White))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Help ")
+                .style(Style::default().bg(Color::Black)),
+        );
+
+    frame.render_widget(Clear, area);
+    frame.render_widget(popup, area);
+}
+
+fn draw_search_overlay(frame: &mut Frame, input: &str) {
+    let popup_width = 50;
+    let popup_height = 5;
+    let area = frame.area();
+    let x = (area.width.saturating_sub(popup_width)) / 2;
+    let y = (area.height.saturating_sub(popup_height)) / 2;
+    let popup_area = Rect::new(x, y, popup_width, popup_height);
+
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+        .margin(1)
+        .split(popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Search ")
+        .style(Style::default().bg(Color::Black));
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(block, popup_area);
+
+    let search_line = Paragraph::new(format!("{}_", input))
+        .style(Style::default().fg(Color::Yellow));
+    frame.render_widget(search_line, inner[0]);
+
+    let hint = Paragraph::new("Enter: apply  Esc: cancel")
+        .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(hint, inner[2]);
+}
+
+fn draw_server_picker(frame: &mut Frame, servers: &[Server], state: &ListState) {
+    let popup_width = 50;
+    let popup_height = (servers.len() + 4).min(15) as u16;
+    let area = frame.area();
+    let x = (area.width.saturating_sub(popup_width)) / 2;
+    let y = (area.height.saturating_sub(popup_height)) / 2;
+    let popup_area = Rect::new(x, y, popup_width, popup_height);
+
+    let items: Vec<ListItem> = servers
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{} ", i + 1), Style::default().fg(Color::Yellow)),
+                Span::styled(&s.server_type, Style::default().fg(Color::Cyan)),
+                Span::raw(format!(":{}", s.port)),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Select Server ")
+                .style(Style::default().bg(Color::Black)),
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+        .highlight_symbol("▶ ");
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_stateful_widget(list, popup_area, &mut state.clone());
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -651,12 +816,12 @@ async fn main() -> Result<()> {
                 app.hosts[i].status = ConnectionStatus::Connected;
                 app.hosts[i].last_fetch = Some(Instant::now());
             }
-            Err(e) => {
+            Err(_) => {
                 app.hosts[i].status = ConnectionStatus::Disconnected;
-                app.hosts[i].error = Some(e.to_string());
             }
         }
     }
+    app.recalc_column_widths();
     app.rebuild_nav();
 
     let mut last_refresh = Instant::now();
@@ -668,13 +833,86 @@ async fn main() -> Result<()> {
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if app.show_help {
-                    app.show_help = false;
+                if key.kind != KeyEventKind::Press {
                     continue;
                 }
 
+                // Handle overlays first
+                match &app.overlay {
+                    OverlayMode::Help => {
+                        app.overlay = OverlayMode::None;
+                        continue;
+                    }
+                    OverlayMode::Search => {
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.search_input.clear();
+                                app.overlay = OverlayMode::None;
+                            }
+                            KeyCode::Enter => {
+                                app.apply_search_filter();
+                                app.overlay = OverlayMode::None;
+                            }
+                            KeyCode::Backspace => {
+                                app.search_input.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                app.search_input.push(c);
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    OverlayMode::ServerPicker(servers) => {
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.overlay = OverlayMode::None;
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                let current = app.server_picker_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.server_picker_state.select(Some(current - 1));
+                                }
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                let current = app.server_picker_state.selected().unwrap_or(0);
+                                if current + 1 < servers.len() {
+                                    app.server_picker_state.select(Some(current + 1));
+                                }
+                            }
+                            KeyCode::Enter => {
+                                if let Some(idx) = app.server_picker_state.selected() {
+                                    if let Some(server) = servers.get(idx) {
+                                        open_browser(&server.url);
+                                    }
+                                }
+                                app.overlay = OverlayMode::None;
+                            }
+                            KeyCode::Char(c) if c.is_ascii_digit() => {
+                                let n = c.to_digit(10).unwrap() as usize;
+                                if n > 0 && n <= servers.len() {
+                                    open_browser(&servers[n - 1].url);
+                                    app.overlay = OverlayMode::None;
+                                }
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    OverlayMode::None => {}
+                }
+
+                // Main key handling
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Char('q') => break,
+                    KeyCode::Esc => {
+                        if !app.filter.is_empty() {
+                            app.filter.clear();
+                            app.rebuild_nav();
+                        } else {
+                            break;
+                        }
+                    }
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                     KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                     KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => app.move_up(),
@@ -694,11 +932,15 @@ async fn main() -> Result<()> {
                     }
                     KeyCode::Tab => app.next_host(),
                     KeyCode::BackTab => app.prev_host(),
-                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                    KeyCode::Char(c) if c.is_ascii_digit() && !key.modifiers.contains(KeyModifiers::CONTROL) => {
                         let n = c.to_digit(10).unwrap() as usize;
                         app.jump_to_host(n);
                     }
                     KeyCode::Enter => app.toggle_current(),
+                    KeyCode::Char('/') => {
+                        app.search_input = app.filter.clone();
+                        app.overlay = OverlayMode::Search;
+                    }
                     KeyCode::Char('o') => {
                         if let Some(agent) = app.get_selected_agent() {
                             if let Some(github) = &agent.github {
@@ -709,11 +951,7 @@ async fn main() -> Result<()> {
                         }
                     }
                     KeyCode::Char('s') => {
-                        if let Some(agent) = app.get_selected_agent() {
-                            if let Some(server) = agent.servers.first() {
-                                open_browser(&server.url);
-                            }
-                        }
+                        app.open_server_picker();
                     }
                     KeyCode::Char('e') => {
                         if let Some(agent) = app.get_selected_agent() {
@@ -721,7 +959,7 @@ async fn main() -> Result<()> {
                         }
                     }
                     KeyCode::Char('?') | KeyCode::F(1) => {
-                        app.show_help = true;
+                        app.overlay = OverlayMode::Help;
                     }
                     KeyCode::Char('r') => {
                         if let Some(nav) = app.nav_items.get(app.selected) {
@@ -741,11 +979,11 @@ async fn main() -> Result<()> {
                                     app.hosts[host_idx].status = ConnectionStatus::Connected;
                                     app.hosts[host_idx].last_fetch = Some(Instant::now());
                                 }
-                                Err(e) => {
+                                Err(_) => {
                                     app.hosts[host_idx].status = ConnectionStatus::Disconnected;
-                                    app.hosts[host_idx].error = Some(e.to_string());
                                 }
                             }
+                            app.recalc_column_widths();
                             app.rebuild_nav();
                         }
                     }
@@ -759,16 +997,12 @@ async fn main() -> Result<()> {
                                     app.hosts[i].status = ConnectionStatus::Connected;
                                     app.hosts[i].last_fetch = Some(Instant::now());
                                 }
-                                Err(e) => {
+                                Err(_) => {
                                     app.hosts[i].status = ConnectionStatus::Disconnected;
-                                    app.hosts[i].error = Some(e.to_string());
                                 }
                             }
                         }
-                        app.rebuild_nav();
-                    }
-                    KeyCode::Backspace => {
-                        app.filter.pop();
+                        app.recalc_column_widths();
                         app.rebuild_nav();
                     }
                     _ => {}
@@ -793,13 +1027,13 @@ async fn main() -> Result<()> {
                             app.hosts[i].status = ConnectionStatus::Connected;
                             app.hosts[i].last_fetch = Some(Instant::now());
                         }
-                        Err(e) => {
+                        Err(_) => {
                             app.hosts[i].status = ConnectionStatus::Disconnected;
-                            app.hosts[i].error = Some(e.to_string());
                         }
                     }
                 }
             }
+            app.recalc_column_widths();
             app.rebuild_nav();
             last_refresh = Instant::now();
         }
