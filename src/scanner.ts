@@ -179,7 +179,12 @@ function getGitHubLinks(repo: string, branch: string, defaultBranch: string, com
   };
 }
 
-function getPRInfo(dir: string): PullRequest | undefined {
+function getPRInfo(dir: string, branch: string, defaultBranch: string): PullRequest | undefined {
+  // Skip PR check for default branch - no PR exists, saves GitHub API calls
+  if (branch === defaultBranch || branch === 'main' || branch === 'master') {
+    return undefined;
+  }
+
   // Short timeout for GitHub API - if it's slow, skip it
   const prJson = exec('gh pr view --json number,url,title,state 2>/dev/null', dir, 2000);
   if (!prJson) return undefined;
@@ -271,7 +276,7 @@ function processAgent(
     directory: dir,
     repo,
     branch,
-    pr: getPRInfo(dir),
+    pr: getPRInfo(dir, branch, defaultBranch),
     servers,
     beads: getBeadsStatus(dir),
     lastCommit,
