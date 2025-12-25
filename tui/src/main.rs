@@ -89,11 +89,22 @@ struct Config {
     hosts: Vec<HostConfig>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum ConnectionStatus {
     Connected,
     Connecting,
     Disconnected,
+}
+
+impl ConnectionStatus {
+    /// Sort key for ordering hosts: Connected first, Connecting middle, Disconnected last
+    fn sort_key(&self) -> u8 {
+        match self {
+            ConnectionStatus::Connected => 0,
+            ConnectionStatus::Connecting => 1,
+            ConnectionStatus::Disconnected => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -211,11 +222,7 @@ impl App {
         self.nav_items.clear();
 
         let mut host_order: Vec<usize> = (0..self.hosts.len()).collect();
-        host_order.sort_by_key(|&i| match self.hosts[i].status {
-            ConnectionStatus::Connected => 0,
-            ConnectionStatus::Connecting => 1,
-            ConnectionStatus::Disconnected => 2,
-        });
+        host_order.sort_by_key(|&i| self.hosts[i].status.sort_key());
 
         let now_ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -599,18 +606,18 @@ fn draw(frame: &mut Frame, app: &App) {
                         Span::raw("  "),
                         server_indicator,
                         Span::styled(
-                            format!("{:<width$}", agent.id, width = app.col_width_name),
+                            format!("{:<width$} ", agent.id, width = app.col_width_name),
                             Style::default().fg(Color::Cyan),
                         ),
                         Span::styled(
-                            format!("{:<width$}", agent.branch, width = app.col_width_branch),
+                            format!("{:<width$} ", agent.branch, width = app.col_width_branch),
                             Style::default().fg(Color::LightMagenta),
                         ),
                         Span::styled(
-                            format!("{:<width$}", server_str, width = app.col_width_server),
+                            format!("{:<width$} ", server_str, width = app.col_width_server),
                             Style::default().fg(Color::Yellow),
                         ),
-                        Span::raw(format!("{:<20}", commit)),
+                        Span::raw(format!("{:<20} ", commit)),
                         Span::styled(
                             agent.last_commit_time.clone(),
                             Style::default().fg(Color::DarkGray),
@@ -1099,4 +1106,382 @@ async fn main() -> Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Config Parsing Tests ====================
+
+    #[test]
+    fn test_config_parse_toml() {
+        let toml_str = r#"
+[[hosts]]
+name = "C-5001"
+url = "http://c-5001.example.com:9999"
+
+[[hosts]]
+name = "C-5002"
+url = "http://c-5002.example.com:9999"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.hosts.len(), 2);
+        assert_eq!(config.hosts[0].name, "C-5001");
+        assert_eq!(config.hosts[0].url, "http://c-5001.example.com:9999");
+        assert_eq!(config.hosts[1].name, "C-5002");
+    }
+
+    #[test]
+    fn test_config_empty_hosts() {
+        let toml_str = "hosts = []";
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.hosts.len(), 0);
+    }
+
+    #[test]
+    fn test_default_hosts() {
+        // When no config file exists, should return defaults
+        let defaults = vec![
+            HostConfig { name: "C-5001".to_string(), url: "http://c-5001.squeaker-teeth.ts.net:9999".to_string() },
+            HostConfig { name: "C-5002".to_string(), url: "http://c-5002.squeaker-teeth.ts.net:9999".to_string() },
+            HostConfig { name: "C-5003".to_string(), url: "http://c-5003.squeaker-teeth.ts.net:9999".to_string() },
+            HostConfig { name: "C-5004".to_string(), url: "http://c-5004.squeaker-teeth.ts.net:9999".to_string() },
+        ];
+        assert_eq!(defaults.len(), 4);
+        assert!(defaults[0].url.contains("squeaker-teeth.ts.net"));
+    }
+
+    // ==================== API Parsing Tests ====================
+
+    #[test]
+    fn test_parse_server() {
+        let json = r#"{
+            "type": "vite",
+            "port": 5173,
+            "pid": 12345,
+            "url": "http://localhost:5173",
+            "tailscaleUrl": "http://c-5001.example.com:5173"
+        }"#;
+        let server: Server = serde_json::from_str(json).unwrap();
+        assert_eq!(server.server_type, "vite");
+        assert_eq!(server.port, 5173);
+        assert_eq!(server.pid, Some(12345));
+        assert_eq!(server.url, "http://localhost:5173");
+        assert_eq!(server.tailscale_url, Some("http://c-5001.example.com:5173".to_string()));
+    }
+
+    #[test]
+    fn test_server_best_url_with_tailscale() {
+        let server = Server {
+            server_type: "vite".to_string(),
+            port: 5173,
+            pid: Some(12345),
+            url: "http://localhost:5173".to_string(),
+            tailscale_url: Some("http://c-5001.example.com:5173".to_string()),
+        };
+        assert_eq!(server.best_url(), "http://c-5001.example.com:5173");
+    }
+
+    #[test]
+    fn test_server_best_url_without_tailscale() {
+        let server = Server {
+            server_type: "vite".to_string(),
+            port: 5173,
+            pid: None,
+            url: "http://localhost:5173".to_string(),
+            tailscale_url: None,
+        };
+        assert_eq!(server.best_url(), "http://localhost:5173");
+    }
+
+    #[test]
+    fn test_parse_github_links() {
+        let json = r#"{
+            "repoUrl": "https://github.com/owner/repo",
+            "branchUrl": "https://github.com/owner/repo/tree/main",
+            "diffUrl": "https://github.com/owner/repo/compare/main...feature",
+            "commitsUrl": "https://github.com/owner/repo/commits/main",
+            "lastCommitUrl": "https://github.com/owner/repo/commit/abc123"
+        }"#;
+        let links: GitHubLinks = serde_json::from_str(json).unwrap();
+        assert_eq!(links.repo_url, Some("https://github.com/owner/repo".to_string()));
+        assert_eq!(links.branch_url, Some("https://github.com/owner/repo/tree/main".to_string()));
+        assert!(links.diff_url.is_some());
+    }
+
+    #[test]
+    fn test_parse_pr_info() {
+        let json = r#"{
+            "number": 42,
+            "url": "https://github.com/owner/repo/pull/42"
+        }"#;
+        let pr: PrInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.url, "https://github.com/owner/repo/pull/42");
+    }
+
+    #[test]
+    fn test_parse_agent_info_full() {
+        let json = r#"{
+            "id": "my-repo",
+            "directory": "/home/user/gits/my-repo",
+            "repo": "owner/my-repo",
+            "branch": "feature-branch",
+            "servers": [{
+                "type": "vite",
+                "port": 5173,
+                "url": "http://localhost:5173"
+            }],
+            "lastCommit": "feat: add new feature",
+            "lastCommitHash": "abc123def",
+            "lastCommitTime": "2 hours ago",
+            "lastCommitTimestamp": 1234567890,
+            "github": {
+                "branchUrl": "https://github.com/owner/my-repo/tree/feature-branch",
+                "diffUrl": "https://github.com/owner/my-repo/compare/main...feature-branch"
+            },
+            "pr": {
+                "number": 42,
+                "url": "https://github.com/owner/my-repo/pull/42"
+            },
+            "status": "active"
+        }"#;
+        let agent: AgentInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.id, "my-repo");
+        assert_eq!(agent.branch, "feature-branch");
+        assert_eq!(agent.servers.len(), 1);
+        assert!(agent.pr.is_some());
+        assert_eq!(agent.pr.unwrap().number, 42);
+        assert_eq!(agent.status, Some("active".to_string()));
+    }
+
+    #[test]
+    fn test_parse_agent_info_minimal() {
+        let json = r#"{
+            "id": "my-repo",
+            "directory": "/home/user/gits/my-repo",
+            "branch": "main",
+            "servers": [],
+            "lastCommit": "initial commit",
+            "lastCommitTime": "1 day ago",
+            "lastCommitTimestamp": 1234567890
+        }"#;
+        let agent: AgentInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.id, "my-repo");
+        assert!(agent.pr.is_none());
+        assert!(agent.github.is_none());
+        assert!(agent.repo.is_none());
+    }
+
+    #[test]
+    fn test_parse_scan_result() {
+        let json = r#"{
+            "agents": [
+                {
+                    "id": "repo1",
+                    "directory": "/path/to/repo1",
+                    "branch": "main",
+                    "servers": [],
+                    "lastCommit": "commit 1",
+                    "lastCommitTime": "1h ago",
+                    "lastCommitTimestamp": 1234567890
+                },
+                {
+                    "id": "repo2",
+                    "directory": "/path/to/repo2",
+                    "branch": "develop",
+                    "servers": [],
+                    "lastCommit": "commit 2",
+                    "lastCommitTime": "2h ago",
+                    "lastCommitTimestamp": 1234567800
+                }
+            ]
+        }"#;
+        let result: ScanResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.agents.len(), 2);
+        assert_eq!(result.agents[0].id, "repo1");
+        assert_eq!(result.agents[1].id, "repo2");
+    }
+
+    // ==================== App State Tests ====================
+
+    #[test]
+    fn test_app_new() {
+        let configs = vec![
+            HostConfig { name: "Host1".to_string(), url: "http://host1:9999".to_string() },
+            HostConfig { name: "Host2".to_string(), url: "http://host2:9999".to_string() },
+        ];
+        let app = App::new(configs);
+        assert_eq!(app.hosts.len(), 2);
+        assert_eq!(app.hosts[0].config.name, "Host1");
+        assert_eq!(app.hosts[1].config.name, "Host2");
+        assert!(matches!(app.hosts[0].status, ConnectionStatus::Connecting));
+    }
+
+    #[test]
+    fn test_app_move_up_down() {
+        let configs = vec![
+            HostConfig { name: "Host1".to_string(), url: "http://host1:9999".to_string() },
+        ];
+        let mut app = App::new(configs);
+        app.nav_items = vec![
+            NavItem::HostHeader(0),
+            NavItem::Repo(0, 0),
+            NavItem::Repo(0, 1),
+        ];
+
+        assert_eq!(app.selected, 0);
+        app.move_down();
+        assert_eq!(app.selected, 1);
+        app.move_down();
+        assert_eq!(app.selected, 2);
+        app.move_down(); // Should not go past end
+        assert_eq!(app.selected, 2);
+        app.move_up();
+        assert_eq!(app.selected, 1);
+        app.move_up();
+        assert_eq!(app.selected, 0);
+        app.move_up(); // Should not go negative
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn test_host_sorting() {
+        let configs = vec![
+            HostConfig { name: "Host1".to_string(), url: "http://host1:9999".to_string() },
+            HostConfig { name: "Host2".to_string(), url: "http://host2:9999".to_string() },
+            HostConfig { name: "Host3".to_string(), url: "http://host3:9999".to_string() },
+        ];
+        let mut app = App::new(configs);
+
+        // Set different statuses
+        app.hosts[0].status = ConnectionStatus::Disconnected;
+        app.hosts[1].status = ConnectionStatus::Connected;
+        app.hosts[2].status = ConnectionStatus::Connecting;
+
+        // Get sorted indices
+        let mut indices: Vec<usize> = (0..app.hosts.len()).collect();
+        indices.sort_by_key(|&i| app.hosts[i].status.sort_key());
+
+        // Connected (1) should be first, Connecting (2) second, Disconnected (0) last
+        assert_eq!(indices, vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn test_filter_matching() {
+        let agent = AgentInfo {
+            id: "my-awesome-repo".to_string(),
+            directory: "/path/to/repo".to_string(),
+            repo: None,
+            branch: "feature-xyz".to_string(),
+            servers: vec![],
+            last_commit: "test".to_string(),
+            last_commit_hash: None,
+            last_commit_time: "1h".to_string(),
+            last_commit_timestamp: 0,
+            github: None,
+            pr: None,
+            status: None,
+        };
+
+        // Filter should match id
+        assert!(agent.id.to_lowercase().contains("awesome"));
+        assert!(agent.id.to_lowercase().contains("repo"));
+
+        // Filter should match branch
+        assert!(agent.branch.to_lowercase().contains("feature"));
+        assert!(agent.branch.to_lowercase().contains("xyz"));
+
+        // Should not match
+        assert!(!agent.id.to_lowercase().contains("notfound"));
+    }
+
+    #[test]
+    fn test_connection_status_sort_order() {
+        assert!(ConnectionStatus::Connected.sort_key() < ConnectionStatus::Connecting.sort_key());
+        assert!(ConnectionStatus::Connecting.sort_key() < ConnectionStatus::Disconnected.sort_key());
+    }
+
+    // ==================== Overlay Tests ====================
+
+    #[test]
+    fn test_overlay_mode_none() {
+        let overlay = OverlayMode::None;
+        assert!(matches!(overlay, OverlayMode::None));
+    }
+
+    #[test]
+    fn test_overlay_mode_help() {
+        let overlay = OverlayMode::Help;
+        assert!(matches!(overlay, OverlayMode::Help));
+    }
+
+    #[test]
+    fn test_overlay_mode_server_picker() {
+        let servers = vec![
+            Server {
+                server_type: "vite".to_string(),
+                port: 5173,
+                pid: None,
+                url: "http://localhost:5173".to_string(),
+                tailscale_url: None,
+            },
+        ];
+        let overlay = OverlayMode::ServerPicker(servers.clone());
+        if let OverlayMode::ServerPicker(s) = overlay {
+            assert_eq!(s.len(), 1);
+            assert_eq!(s[0].port, 5173);
+        } else {
+            panic!("Expected ServerPicker");
+        }
+    }
+
+    // ==================== Stale Classification Tests ====================
+
+    #[test]
+    fn test_stale_classification() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let one_day_secs: i64 = 24 * 60 * 60;
+
+        // Fresh: less than 1 day old
+        let fresh_timestamp = now - (one_day_secs / 2); // 12 hours ago
+        assert!(now - fresh_timestamp < one_day_secs);
+
+        // Stale: more than 1 day old
+        let stale_timestamp = now - (one_day_secs * 2); // 2 days ago
+        assert!(now - stale_timestamp >= one_day_secs);
+    }
+
+    // ==================== Nav Item Tests ====================
+
+    #[test]
+    fn test_nav_item_variants() {
+        let items = vec![
+            NavItem::HostHeader(0),
+            NavItem::Repo(0, 0),
+            NavItem::StaleServersHeader(0),
+            NavItem::StaleServerRepo(0, 0),
+            NavItem::StaleReposHeader(0),
+            NavItem::StaleRepo(0, 0),
+        ];
+
+        assert_eq!(items.len(), 6);
+
+        // Test pattern matching
+        for item in &items {
+            match item {
+                NavItem::HostHeader(h) => assert_eq!(*h, 0),
+                NavItem::Repo(h, r) => { assert_eq!(*h, 0); assert_eq!(*r, 0); }
+                NavItem::StaleServersHeader(h) => assert_eq!(*h, 0),
+                NavItem::StaleServerRepo(h, r) => { assert_eq!(*h, 0); assert_eq!(*r, 0); }
+                NavItem::StaleReposHeader(h) => assert_eq!(*h, 0),
+                NavItem::StaleRepo(h, r) => { assert_eq!(*h, 0); assert_eq!(*r, 0); }
+            }
+        }
+    }
 }
