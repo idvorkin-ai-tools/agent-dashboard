@@ -38,3 +38,21 @@ check:
 # Watch mode for type checking
 watch:
     npx tsc --noEmit --watch
+
+# === TUI Commands ===
+
+# Build TUI
+tui-build:
+    cd tui && cargo build --release
+
+# Install TUI binary to ~/.cargo/bin
+tui-install: tui-build
+    cp tui/target/release/agent-dashboard-tui ~/.cargo/bin/
+
+# Run TUI in dev mode
+tui-dev:
+    cd tui && cargo run
+
+# Run TUI dump mode (debug)
+tui-dump:
+    cd tui && cargo run -- --dump
