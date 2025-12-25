@@ -819,22 +819,18 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     let mut app = App::new(configs);
 
-    // Initial fetch
+    // Channel for background fetch results
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(usize, Result<ScanResult>)>(16);
+
+    // Spawn initial fetches for all hosts
     for i in 0..app.hosts.len() {
         let url = app.hosts[i].config.url.clone();
-        match fetch_host_data(&url).await {
-            Ok(data) => {
-                app.hosts[i].data = Some(data);
-                app.hosts[i].status = ConnectionStatus::Connected;
-                app.hosts[i].last_fetch = Some(Instant::now());
-            }
-            Err(_) => {
-                app.hosts[i].status = ConnectionStatus::Disconnected;
-            }
-        }
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = fetch_host_data(&url).await;
+            let _ = tx.send((i, result)).await;
+        });
     }
-    app.recalc_column_widths();
-    app.rebuild_nav();
 
     let mut last_refresh = Instant::now();
     let connected_interval = Duration::from_secs(10);
@@ -842,6 +838,22 @@ async fn main() -> Result<()> {
 
     loop {
         terminal.draw(|frame| draw(frame, &app))?;
+
+        // Check for background fetch results (non-blocking)
+        while let Ok((i, result)) = rx.try_recv() {
+            match result {
+                Ok(data) => {
+                    app.hosts[i].data = Some(data);
+                    app.hosts[i].status = ConnectionStatus::Connected;
+                    app.hosts[i].last_fetch = Some(Instant::now());
+                }
+                Err(_) => {
+                    app.hosts[i].status = ConnectionStatus::Disconnected;
+                }
+            }
+            app.recalc_column_widths();
+            app.rebuild_nav();
+        }
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
@@ -997,34 +1009,22 @@ async fn main() -> Result<()> {
                             };
                             let url = app.hosts[host_idx].config.url.clone();
                             app.hosts[host_idx].status = ConnectionStatus::Connecting;
-                            match fetch_host_data(&url).await {
-                                Ok(data) => {
-                                    app.hosts[host_idx].data = Some(data);
-                                    app.hosts[host_idx].status = ConnectionStatus::Connected;
-                                    app.hosts[host_idx].last_fetch = Some(Instant::now());
-                                }
-                                Err(_) => {
-                                    app.hosts[host_idx].status = ConnectionStatus::Disconnected;
-                                }
-                            }
-                            app.recalc_column_widths();
-                            app.rebuild_nav();
+                            let tx = tx.clone();
+                            tokio::spawn(async move {
+                                let result = fetch_host_data(&url).await;
+                                let _ = tx.send((host_idx, result)).await;
+                            });
                         }
                     }
                     KeyCode::Char('R') => {
                         for i in 0..app.hosts.len() {
                             let url = app.hosts[i].config.url.clone();
                             app.hosts[i].status = ConnectionStatus::Connecting;
-                            match fetch_host_data(&url).await {
-                                Ok(data) => {
-                                    app.hosts[i].data = Some(data);
-                                    app.hosts[i].status = ConnectionStatus::Connected;
-                                    app.hosts[i].last_fetch = Some(Instant::now());
-                                }
-                                Err(_) => {
-                                    app.hosts[i].status = ConnectionStatus::Disconnected;
-                                }
-                            }
+                            let tx = tx.clone();
+                            tokio::spawn(async move {
+                                let result = fetch_host_data(&url).await;
+                                let _ = tx.send((i, result)).await;
+                            });
                         }
                         app.recalc_column_widths();
                         app.rebuild_nav();
@@ -1035,30 +1035,25 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Background refresh
-        if last_refresh.elapsed() > connected_interval {
+        // Background refresh - spawn tasks for hosts that need updating
+        if last_refresh.elapsed() > Duration::from_secs(1) {
             for i in 0..app.hosts.len() {
                 let interval = match app.hosts[i].status {
                     ConnectionStatus::Connected => connected_interval,
+                    ConnectionStatus::Connecting => continue, // Skip if already fetching
                     _ => disconnected_interval,
                 };
 
                 if app.hosts[i].last_fetch.map(|t| t.elapsed() > interval).unwrap_or(true) {
                     let url = app.hosts[i].config.url.clone();
-                    match fetch_host_data(&url).await {
-                        Ok(data) => {
-                            app.hosts[i].data = Some(data);
-                            app.hosts[i].status = ConnectionStatus::Connected;
-                            app.hosts[i].last_fetch = Some(Instant::now());
-                        }
-                        Err(_) => {
-                            app.hosts[i].status = ConnectionStatus::Disconnected;
-                        }
-                    }
+                    app.hosts[i].status = ConnectionStatus::Connecting;
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
+                        let result = fetch_host_data(&url).await;
+                        let _ = tx.send((i, result)).await;
+                    });
                 }
             }
-            app.recalc_column_widths();
-            app.rebuild_nav();
             last_refresh = Instant::now();
         }
     }
