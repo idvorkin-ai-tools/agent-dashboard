@@ -31,6 +31,13 @@ struct Server {
     tailscale_url: Option<String>,
 }
 
+impl Server {
+    /// Get the best URL - prefer tailscale_url for remote access
+    fn best_url(&self) -> &str {
+        self.tailscale_url.as_deref().unwrap_or(&self.url)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GitHubLinks {
@@ -415,7 +422,7 @@ impl App {
                 self.overlay = OverlayMode::ServerPicker(agent.servers.clone());
                 self.server_picker_state.select(Some(0));
             } else if let Some(server) = agent.servers.first() {
-                open_browser(&server.url);
+                open_browser(server.best_url());
             }
         }
     }
@@ -924,7 +931,7 @@ async fn main() -> Result<()> {
                             KeyCode::Enter => {
                                 if let Some(idx) = app.server_picker_state.selected() {
                                     if let Some(server) = servers.get(idx) {
-                                        open_browser(&server.url);
+                                        open_browser(server.best_url());
                                     }
                                 }
                                 app.overlay = OverlayMode::None;
@@ -932,7 +939,7 @@ async fn main() -> Result<()> {
                             KeyCode::Char(c) if c.is_ascii_digit() => {
                                 let n = c.to_digit(10).unwrap() as usize;
                                 if n > 0 && n <= servers.len() {
-                                    open_browser(&servers[n - 1].url);
+                                    open_browser(servers[n - 1].best_url());
                                     app.overlay = OverlayMode::None;
                                 }
                             }
