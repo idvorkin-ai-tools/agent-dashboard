@@ -81,7 +81,7 @@ url = "http://c-5004.squeaker-teeth.ts.net:9999"
 |--------|-------|-------------|
 | Name | dynamic (max 26) | Repo directory name |
 | Branch | dynamic (max 28) | Current git branch |
-| PR | dynamic (max 8) | PR number if exists (e.g., `#42`) |
+| PR | dynamic (max 8) | PR number if exists (e.g., `#42`), strikethrough if merged |
 | Server | dynamic (max 30) | Running server type:port, shows `+N` for overflow |
 | Commit | fills remaining | Last commit message (uses available space) |
 | Time | clipped last | Relative time of last commit |
@@ -234,7 +234,8 @@ Expects JSON from `GET /api/agents`:
       },
       "pr": {
         "number": 42,
-        "url": "https://github.com/.../pull/42"
+        "url": "https://github.com/.../pull/42",
+        "state": "OPEN|MERGED|CLOSED"
       },
       "status": "active|idle"
     }

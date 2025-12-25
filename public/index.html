@@ -269,6 +269,14 @@
       text-decoration: underline;
     }
 
+    .pr-link.merged {
+      text-decoration: line-through;
+    }
+
+    .pr-link.merged:hover {
+      text-decoration: line-through underline;
+    }
+
     .server-links {
       display: flex;
       gap: 8px;
@@ -773,7 +781,7 @@
           : '<span style="color: #666">-</span>';
 
         const prHtml = agent.pr
-          ? `<a class="pr-link" href="${agent.pr.url}" target="_blank">#${agent.pr.number}</a>`
+          ? `<a class="pr-link${agent.pr.state === 'MERGED' ? ' merged' : ''}" href="${agent.pr.url}" target="_blank">#${agent.pr.number}</a>`
           : '<span style="color: #666">-</span>';
 
         const beadsHtml = agent.beads

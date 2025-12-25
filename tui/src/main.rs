@@ -53,6 +53,8 @@ struct GitHubLinks {
 struct PrInfo {
     number: u32,
     url: String,
+    #[serde(default)]
+    state: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -688,7 +690,11 @@ fn draw(frame: &mut Frame, app: &App) {
                         Span::raw(" "),
                         Span::styled(
                             format!("{:<width$}", pr_display, width = app.col_width_pr),
-                            Style::default().fg(Color::Blue),
+                            if agent.pr.as_ref().map(|pr| pr.state == "MERGED").unwrap_or(false) {
+                                Style::default().fg(Color::Blue).add_modifier(Modifier::CROSSED_OUT)
+                            } else {
+                                Style::default().fg(Color::Blue)
+                            },
                         ),
                         Span::raw(" "),
                         Span::styled(

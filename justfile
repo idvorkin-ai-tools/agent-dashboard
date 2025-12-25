@@ -56,3 +56,9 @@ tui-dev:
 # Run TUI dump mode (debug)
 tui-dump:
     cd tui && cargo run -- --dump
+
+# === Web Deploy ===
+
+# Deploy web UI to Cloudflare Pages
+deploy:
+    npx wrangler pages deploy public --project-name=agent-dashboard
