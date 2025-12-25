@@ -50,6 +50,13 @@ struct GitHubLinks {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PrInfo {
+    number: u32,
+    url: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AgentInfo {
     id: String,
     directory: String,
@@ -61,6 +68,7 @@ struct AgentInfo {
     last_commit_time: String,
     last_commit_timestamp: i64,
     github: Option<GitHubLinks>,
+    pr: Option<PrInfo>,
     status: Option<String>,
 }
 
@@ -656,12 +664,12 @@ fn draw(frame: &mut Frame, app: &App) {
     let status = Line::from(vec![
         Span::styled("↑↓", Style::default().fg(Color::Yellow)),
         Span::styled(":nav ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::styled(":term ", Style::default().fg(Color::DarkGray)),
         Span::styled("o", Style::default().fg(Color::Yellow)),
         Span::styled(":branch ", Style::default().fg(Color::DarkGray)),
         Span::styled("d", Style::default().fg(Color::Yellow)),
         Span::styled(":diff ", Style::default().fg(Color::DarkGray)),
+        Span::styled("p", Style::default().fg(Color::Yellow)),
+        Span::styled(":pr ", Style::default().fg(Color::DarkGray)),
         Span::styled("s", Style::default().fg(Color::Yellow)),
         Span::styled(":server ", Style::default().fg(Color::DarkGray)),
         Span::styled("e", Style::default().fg(Color::Yellow)),
@@ -693,6 +701,7 @@ fn draw_help_overlay(frame: &mut Frame) {
   ACTIONS
     o                    Open branch on GitHub
     d                    Open diff vs main
+    p                    Open PR on GitHub
     s                    Open server (picker if multiple)
     e                    Open in $EDITOR
     r / R                Refresh host / all hosts
@@ -1003,6 +1012,13 @@ async fn main() -> Result<()> {
                                 if let Some(url) = &github.diff_url {
                                     open_browser(url);
                                 }
+                            }
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        if let Some(agent) = app.get_selected_agent() {
+                            if let Some(pr) = &agent.pr {
+                                open_browser(&pr.url);
                             }
                         }
                     }
