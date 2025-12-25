@@ -551,7 +551,7 @@ fn draw(frame: &mut Frame, app: &App) {
                 let status_char = match host.status {
                     ConnectionStatus::Connected => "●",
                     ConnectionStatus::Connecting => "◐",
-                    ConnectionStatus::Disconnected => "✗",
+                    ConnectionStatus::Disconnected => "●",
                 };
 
                 let repo_count = host.data.as_ref().map(|d| d.agents.len()).unwrap_or(0);
