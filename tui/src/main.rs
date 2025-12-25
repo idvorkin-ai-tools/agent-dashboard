@@ -892,6 +892,7 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     OverlayMode::ServerPicker(servers) => {
+                        let servers = servers.clone();
                         match key.code {
                             KeyCode::Esc => {
                                 app.overlay = OverlayMode::None;
@@ -902,7 +903,19 @@ async fn main() -> Result<()> {
                                     app.server_picker_state.select(Some(current - 1));
                                 }
                             }
+                            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                let current = app.server_picker_state.selected().unwrap_or(0);
+                                if current > 0 {
+                                    app.server_picker_state.select(Some(current - 1));
+                                }
+                            }
                             KeyCode::Down | KeyCode::Char('j') => {
+                                let current = app.server_picker_state.selected().unwrap_or(0);
+                                if current + 1 < servers.len() {
+                                    app.server_picker_state.select(Some(current + 1));
+                                }
+                            }
+                            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 let current = app.server_picker_state.selected().unwrap_or(0);
                                 if current + 1 < servers.len() {
                                     app.server_picker_state.select(Some(current + 1));
