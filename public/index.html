@@ -46,14 +46,148 @@
     }
 
     .meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       font-size: 13px;
       color: #888;
     }
 
-    .meta span {
-      margin-left: 16px;
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
 
+    .btn {
+      background: #2a2a4a;
+      border: 1px solid #3a3a5a;
+      color: #888;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: #3a3a5a;
+      color: #aaa;
+    }
+
+    .btn.active {
+      background: #1e3a5f;
+      border-color: #60a5fa;
+      color: #60a5fa;
+    }
+
+    .kbd {
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: monospace;
+      color: #888;
+      margin-left: 4px;
+    }
+
+    /* Host section styles */
+    .host-section {
+      margin-bottom: 24px;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .host-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #16213e;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .host-header:hover {
+      background: #1e2a4e;
+    }
+
+    .host-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .host-name {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .host-url {
+      font-family: monospace;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .host-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-dot.connected { background: #4ade80; }
+    .status-dot.connecting { background: #fbbf24; animation: pulse 1s infinite; }
+    .status-dot.disconnected { background: #ef4444; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .host-meta {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .collapse-icon {
+      color: #666;
+      transition: transform 0.2s;
+    }
+
+    .host-section.collapsed .collapse-icon {
+      transform: rotate(-90deg);
+    }
+
+    .host-section.collapsed .host-content {
+      display: none;
+    }
+
+    .host-content {
+      padding: 0;
+    }
+
+    .host-error {
+      padding: 16px;
+      background: #2a1a1a;
+      color: #fca5a5;
+      font-size: 13px;
+    }
+
+    .host-loading {
+      padding: 24px;
+      text-align: center;
+      color: #666;
+    }
+
+    /* Table styles */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -62,12 +196,12 @@
 
     th, td {
       text-align: left;
-      padding: 12px 16px;
+      padding: 10px 16px;
       border-bottom: 1px solid #2a2a4a;
     }
 
     th {
-      background: #16213e;
+      background: #1a1a2e;
       font-weight: 600;
       color: #aaa;
       text-transform: uppercase;
@@ -79,7 +213,7 @@
     }
 
     th:hover {
-      background: #1e2a4e;
+      background: #22223a;
     }
 
     th .sort-indicator {
@@ -225,54 +359,113 @@
 
     .no-agents {
       text-align: center;
-      padding: 60px 20px;
+      padding: 40px 20px;
       color: #666;
     }
 
-    .error {
-      background: #7f1d1d;
-      color: #fca5a5;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 20px;
+    /* Settings modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
     }
 
-    .refresh-indicator {
-      font-size: 12px;
-      color: #666;
+    .modal-overlay.hidden {
+      display: none;
     }
 
-    .refresh-indicator.refreshing {
-      color: #60a5fa;
+    .modal {
+      background: #1a1a2e;
+      border: 1px solid #3a3a5a;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
     }
 
-    .stale-toggle {
+    .modal h2 {
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+
+    .modal-hosts {
+      margin-bottom: 16px;
+    }
+
+    .modal-host-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+
+    .modal-host-row input {
+      flex: 1;
+      padding: 8px 12px;
       background: #2a2a4a;
       border: 1px solid #3a3a5a;
-      color: #888;
-      padding: 6px 12px;
       border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.15s;
-      margin-right: 16px;
+      color: #eee;
+      font-size: 14px;
     }
 
-    .stale-toggle:hover {
-      background: #3a3a5a;
-      color: #aaa;
-    }
-
-    .stale-toggle.active {
-      background: #1e3a5f;
+    .modal-host-row input:focus {
+      outline: none;
       border-color: #60a5fa;
-      color: #60a5fa;
     }
 
-    .hidden-count {
-      color: #666;
+    .modal-host-row .btn-remove {
+      background: #4a2a2a;
+      color: #fca5a5;
+      border-color: #6a3a3a;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+
+    .modal-actions-right {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      border-color: #3b82f6;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #3b82f6;
+    }
+
+    .help-text {
       font-size: 12px;
-      margin-left: 8px;
+      color: #666;
+      margin-top: 8px;
+    }
+
+    /* Keyboard shortcuts help */
+    .shortcuts-hint {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2a2a4a;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #888;
     }
   </style>
 </head>
@@ -280,35 +473,147 @@
   <header>
     <h1>
       Agent Dashboard
-      <a href="https://github.com/idvorkin-ai-tools/agent-dashboard#readme" target="_blank" class="github-icon" title="View README on GitHub">
+      <a href="https://github.com/idvorkin/agent-dashboard#readme" target="_blank" class="github-icon" title="View README on GitHub">
         <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
       </a>
     </h1>
     <div class="meta">
-      <span id="hostname"></span>
-      <span id="tailscale"></span>
-      <button id="stale-toggle" class="stale-toggle" onclick="toggleShowStale()">Show Stale</button>
-      <span class="refresh-indicator" id="refresh">Auto-refresh: 10s</span>
+      <div class="controls">
+        <button class="btn" id="stale-toggle" onclick="toggleShowStale()">Show Stale</button>
+        <button class="btn" onclick="expandAll()">Expand All <span class="kbd">e</span></button>
+        <button class="btn" onclick="collapseAll()">Collapse All <span class="kbd">c</span></button>
+        <button class="btn" onclick="refreshAll()">Refresh All <span class="kbd">r</span></button>
+        <button class="btn" onclick="showSettings()">Settings <span class="kbd">s</span></button>
+      </div>
     </div>
   </header>
 
-  <div id="error" class="error" style="display: none;"></div>
+  <div id="hosts-container"></div>
 
-  <div id="content">
-    <div class="no-agents">Loading...</div>
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Configure Hosts</h2>
+      <div id="modal-hosts" class="modal-hosts"></div>
+      <button class="btn" onclick="addHostRow()">+ Add Host</button>
+      <p class="help-text">Enter host URLs like http://hostname:9999 or http://192.168.1.100:9999</p>
+      <div class="modal-actions">
+        <button class="btn" onclick="resetToDefaults()">Reset to Defaults</button>
+        <div class="modal-actions-right">
+          <button class="btn" onclick="hideSettings()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shortcuts-hint">
+    <span class="kbd">e</span> expand all
+    <span class="kbd">c</span> collapse all
+    <span class="kbd">r</span> refresh
+    <span class="kbd">s</span> settings
   </div>
 
   <script>
-    let refreshInterval;
-    let currentAgents = [];
-    let sortColumn = 'commit';
-    let sortDirection = 'desc';
-    let showStale = false;
+    // Default hosts - c-5001 through c-5004 are tailscale hostnames
+    const DEFAULT_HOSTS = [
+      { name: 'c-5001', url: 'http://c-5001:9999' },
+      { name: 'c-5002', url: 'http://c-5002:9999' },
+      { name: 'c-5003', url: 'http://c-5003:9999' },
+      { name: 'c-5004', url: 'http://c-5004:9999' },
+    ];
 
+    const STORAGE_KEY = 'agent-dashboard-hosts';
+    const REFRESH_INTERVAL_CONNECTED = 10000;  // 10s when connected
+    const REFRESH_INTERVAL_FAILED = 60000;     // 60s when failed
+
+    // State
+    let hosts = [];
+    let hostStates = new Map(); // url -> { status, data, error, lastFetch, refreshTimer, collapsed }
+    let showStale = false;
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+    // Load hosts from localStorage or use defaults
+    function loadHosts() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          hosts = JSON.parse(saved);
+        } else {
+          hosts = [...DEFAULT_HOSTS];
+        }
+      } catch (e) {
+        hosts = [...DEFAULT_HOSTS];
+      }
+
+      // Initialize state for each host
+      hosts.forEach(host => {
+        if (!hostStates.has(host.url)) {
+          hostStates.set(host.url, {
+            status: 'connecting',
+            data: null,
+            error: null,
+            lastFetch: null,
+            refreshTimer: null,
+            collapsed: false
+          });
+        }
+      });
+    }
+
+    function saveHosts() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(hosts));
+    }
+
+    // Fetch data for a single host
+    async function fetchHost(host) {
+      const state = hostStates.get(host.url);
+      state.status = 'connecting';
+      renderHostSection(host);
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const res = await fetch(`${host.url}/api/agents`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        state.status = 'connected';
+        state.data = data;
+        state.error = null;
+        state.lastFetch = new Date();
+
+        // Schedule next refresh at normal interval
+        scheduleRefresh(host, REFRESH_INTERVAL_CONNECTED);
+      } catch (err) {
+        state.status = 'disconnected';
+        state.error = err.name === 'AbortError' ? 'Connection timeout' : err.message;
+        state.lastFetch = new Date();
+
+        // Schedule next refresh at slower interval
+        scheduleRefresh(host, REFRESH_INTERVAL_FAILED);
+      }
+
+      renderHostSection(host);
+      rerenderAllHosts(); // Reorder: connected first, disconnected last
+    }
+
+    function scheduleRefresh(host, interval) {
+      const state = hostStates.get(host.url);
+      if (state.refreshTimer) {
+        clearTimeout(state.refreshTimer);
+      }
+      state.refreshTimer = setTimeout(() => fetchHost(host), interval);
+    }
+
+    // Filter stale agents
     function filterAgents(agents) {
       if (showStale) return agents;
       const now = Date.now();
@@ -328,137 +633,85 @@
 
     function toggleShowStale() {
       showStale = !showStale;
-      renderTable();
+      document.getElementById('stale-toggle').classList.toggle('active', showStale);
+      document.getElementById('stale-toggle').textContent = showStale ? 'Hide Stale' : 'Show Stale';
+      hosts.forEach(host => renderHostSection(host));
     }
 
-    function sortAgents(agents, column, direction) {
-      return [...agents].sort((a, b) => {
-        let valA, valB;
+    // Render a single host section
+    function renderHostSection(host) {
+      const state = hostStates.get(host.url);
+      const container = document.getElementById('hosts-container');
+      let section = document.getElementById(`host-${encodeURIComponent(host.url)}`);
 
-        switch (column) {
-          case 'id':
-            valA = a.id.toLowerCase();
-            valB = b.id.toLowerCase();
-            break;
-          case 'branch':
-            valA = a.branch.toLowerCase();
-            valB = b.branch.toLowerCase();
-            break;
-          case 'pr':
-            valA = a.pr?.number || 0;
-            valB = b.pr?.number || 0;
-            break;
-          case 'servers':
-            valA = a.servers.length;
-            valB = b.servers.length;
-            break;
-          case 'beads':
-            valA = a.beads?.open || 0;
-            valB = b.beads?.open || 0;
-            break;
-          case 'commit':
-            valA = a.lastCommitTimestamp || 0;
-            valB = b.lastCommitTimestamp || 0;
-            break;
-          case 'status':
-            valA = a.status === 'active' ? 1 : 0;
-            valB = b.status === 'active' ? 1 : 0;
-            break;
-          default:
-            valA = '';
-            valB = '';
-        }
-
-        if (valA < valB) return direction === 'asc' ? -1 : 1;
-        if (valA > valB) return direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-
-    function handleSort(column) {
-      if (sortColumn === column) {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortColumn = column;
-        sortDirection = 'asc';
-      }
-      renderTable();
-    }
-
-    async function fetchAgents() {
-      const refreshEl = document.getElementById('refresh');
-      refreshEl.textContent = 'Refreshing...';
-      refreshEl.classList.add('refreshing');
-
-      try {
-        const res = await fetch('/api/agents');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderDashboard(data);
-        document.getElementById('error').style.display = 'none';
-      } catch (err) {
-        document.getElementById('error').textContent = `Error: ${err.message}`;
-        document.getElementById('error').style.display = 'block';
-      } finally {
-        refreshEl.textContent = 'Auto-refresh: 10s';
-        refreshEl.classList.remove('refreshing');
-      }
-    }
-
-    let currentData = null;
-
-    function renderDashboard(data) {
-      currentData = data;
-      document.getElementById('hostname').textContent = `Host: ${data.hostname}`;
-
-      if (data.tailscaleHostname) {
-        document.getElementById('tailscale').textContent = `Tailscale: ${data.tailscaleHostname}`;
+      if (!section) {
+        section = document.createElement('div');
+        section.id = `host-${encodeURIComponent(host.url)}`;
+        section.className = 'host-section';
+        container.appendChild(section);
       }
 
-      if (data.agents.length === 0) {
-        document.getElementById('content').innerHTML = `
-          <div class="no-agents">
-            <p>No git repositories found in ~/gits/</p>
+      const statusClass = state.status;
+      const statusText = state.status === 'connected' ? 'Connected' :
+                        state.status === 'connecting' ? 'Connecting...' : 'Disconnected';
+
+      const agentCount = state.data?.agents?.length || 0;
+      const activeCount = state.data?.agents?.filter(a => a.status === 'active').length || 0;
+      const lastFetchText = state.lastFetch ? `Last update: ${formatTime(state.lastFetch)}` : '';
+
+      let contentHtml = '';
+      if (state.status === 'connecting' && !state.data) {
+        contentHtml = '<div class="host-loading">Connecting...</div>';
+      } else if (state.status === 'disconnected' && !state.data) {
+        contentHtml = `<div class="host-error">Failed to connect: ${state.error || 'Unknown error'}</div>`;
+      } else if (state.data) {
+        contentHtml = renderAgentsTable(state.data, host);
+      }
+
+      section.className = `host-section${state.collapsed ? ' collapsed' : ''}`;
+      section.innerHTML = `
+        <div class="host-header" onclick="toggleHost('${host.url}')">
+          <div class="host-title">
+            <span class="collapse-icon">&#9660;</span>
+            <span class="host-name">${escapeHtml(host.name)}</span>
+            <span class="host-url">${escapeHtml(host.url)}</span>
           </div>
-        `;
-        return;
-      }
-
-      currentAgents = data.agents;
-      renderTable();
+          <div class="host-status">
+            <span class="host-meta">${agentCount} repos, ${activeCount} active</span>
+            <span class="host-meta">${lastFetchText}</span>
+            <span class="status-dot ${statusClass}"></span>
+            <span>${statusText}</span>
+          </div>
+        </div>
+        <div class="host-content">
+          ${contentHtml}
+        </div>
+      `;
     }
 
-    function renderTable() {
-      if (!currentData || currentAgents.length === 0) return;
-
-      const hiddenCount = getHiddenCount(currentAgents);
-      const filteredAgents = filterAgents(currentAgents);
-      const sortedAgents = sortAgents(filteredAgents, sortColumn, sortDirection);
-
-      // Update toggle button
-      const toggleBtn = document.getElementById('stale-toggle');
-      if (toggleBtn) {
-        toggleBtn.classList.toggle('active', showStale);
-        toggleBtn.textContent = showStale
-          ? 'Hide Stale'
-          : `Show Stale${hiddenCount > 0 ? ` (${hiddenCount})` : ''}`;
+    function renderAgentsTable(data, host) {
+      const agents = data.agents || [];
+      if (agents.length === 0) {
+        return '<div class="no-agents">No repositories found</div>';
       }
 
-      if (sortedAgents.length === 0) {
-        document.getElementById('content').innerHTML = `
-          <div class="no-agents">
-            <p>No recent repos (all ${hiddenCount} repos have commits older than 1 day)</p>
-            <p style="margin-top: 8px; font-size: 13px;">Click "Show Stale" to see all repos</p>
-          </div>
-        `;
-        return;
+      const filteredAgents = filterAgents(agents);
+      const hiddenCount = getHiddenCount(agents);
+
+      if (filteredAgents.length === 0) {
+        return `<div class="no-agents">No recent repos (${hiddenCount} stale repos hidden)</div>`;
       }
+
+      // Sort by last commit timestamp descending
+      const sortedAgents = [...filteredAgents].sort((a, b) =>
+        (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
+      );
 
       const rows = sortedAgents.map(agent => {
         const statusClass = agent.status;
         const serversHtml = agent.servers.length > 0
           ? agent.servers.map(s => {
-              const url = currentData.tailscaleHostname ? s.tailscaleUrl : s.url;
+              const url = data.tailscaleHostname ? s.tailscaleUrl : s.url;
               return `<a class="server-link" href="${url}" target="_blank">
                 <span class="server-type">${s.type}</span>
                 :${s.port}
@@ -472,15 +725,14 @@
 
         const beadsHtml = agent.beads
           ? `<span class="beads-count${agent.beads.inProgress > 0 ? ' in-progress' : ''}">${agent.beads.open} open</span>
-             ${agent.beads.inProgress > 0 ? `<span class="beads-count in-progress">${agent.beads.inProgress} WIP</span>` : ''}
-             ${agent.beads.inProgressIssues.length > 0 ? `<div class="beads-issues">${agent.beads.inProgressIssues.join(', ')}</div>` : ''}`
+             ${agent.beads.inProgress > 0 ? `<span class="beads-count in-progress">${agent.beads.inProgress} WIP</span>` : ''}`
           : '<span style="color: #666">-</span>';
 
         const githubHtml = agent.github
           ? `<div class="github-links">
-               <a class="github-link diff" href="${agent.github.diffUrl}" target="_blank" title="Compare ${agent.branch} to main">Diff</a>
-               <a class="github-link" href="${agent.github.lastCommitUrl}" target="_blank" title="View last commit">Commit</a>
-               <a class="github-link" href="${agent.github.commitsUrl}" target="_blank" title="View all commits on ${agent.branch}">History</a>
+               <a class="github-link diff" href="${agent.github.diffUrl}" target="_blank" title="Diff">D</a>
+               <a class="github-link" href="${agent.github.lastCommitUrl}" target="_blank" title="Commit">C</a>
+               <a class="github-link" href="${agent.github.commitsUrl}" target="_blank" title="History">H</a>
              </div>`
           : '<span style="color: #666">-</span>';
 
@@ -488,42 +740,32 @@
           <tr>
             <td>
               <span class="status ${statusClass}"></span>
-              <span class="agent-id">${agent.id}</span>
+              <span class="agent-id">${escapeHtml(agent.id)}</span>
             </td>
-            <td><span class="branch">${agent.branch}</span></td>
+            <td><span class="branch">${escapeHtml(agent.branch)}</span></td>
             <td>${prHtml}</td>
             <td>${githubHtml}</td>
             <td><div class="server-links">${serversHtml}</div></td>
             <td class="beads">${beadsHtml}</td>
             <td>
-              <div class="commit" title="${agent.lastCommit}">${agent.lastCommit || '-'}</div>
-              <div class="commit-time">${agent.lastCommitTime || ''}</div>
+              <div class="commit" title="${escapeHtml(agent.lastCommit || '')}">${escapeHtml(agent.lastCommit || '-')}</div>
+              <div class="commit-time">${escapeHtml(agent.lastCommitTime || '')}</div>
             </td>
           </tr>
         `;
       }).join('');
 
-      const columns = [
-        { key: 'id', label: 'Agent' },
-        { key: 'branch', label: 'Branch' },
-        { key: 'pr', label: 'PR' },
-        { key: 'github', label: 'GitHub' },
-        { key: 'servers', label: 'Servers' },
-        { key: 'beads', label: 'Beads' },
-        { key: 'commit', label: 'Last Commit' }
-      ];
-
-      const headerHtml = columns.map(col => {
-        const isSorted = sortColumn === col.key;
-        const arrow = isSorted ? (sortDirection === 'asc' ? '▲' : '▼') : '▲';
-        return `<th class="${isSorted ? 'sorted' : ''}" onclick="handleSort('${col.key}')">${col.label}<span class="sort-indicator">${arrow}</span></th>`;
-      }).join('');
-
-      document.getElementById('content').innerHTML = `
+      return `
         <table>
           <thead>
             <tr>
-              ${headerHtml}
+              <th>Agent</th>
+              <th>Branch</th>
+              <th>PR</th>
+              <th>GitHub</th>
+              <th>Servers</th>
+              <th>Beads</th>
+              <th>Last Commit</th>
             </tr>
           </thead>
           <tbody>
@@ -533,11 +775,200 @@
       `;
     }
 
-    // Initial fetch
-    fetchAgents();
+    // Toggle host collapse
+    function toggleHost(url) {
+      const state = hostStates.get(url);
+      if (state) {
+        state.collapsed = !state.collapsed;
+        const host = hosts.find(h => h.url === url);
+        if (host) renderHostSection(host);
+      }
+    }
 
-    // Auto-refresh every 10 seconds
-    refreshInterval = setInterval(fetchAgents, 10000);
+    function expandAll() {
+      hosts.forEach(host => {
+        const state = hostStates.get(host.url);
+        if (state) state.collapsed = false;
+        renderHostSection(host);
+      });
+    }
+
+    function collapseAll() {
+      hosts.forEach(host => {
+        const state = hostStates.get(host.url);
+        if (state) state.collapsed = true;
+        renderHostSection(host);
+      });
+    }
+
+    function refreshAll() {
+      hosts.forEach(host => fetchHost(host));
+    }
+
+    // Settings modal
+    function showSettings() {
+      const modal = document.getElementById('settings-modal');
+      const container = document.getElementById('modal-hosts');
+      container.innerHTML = '';
+
+      hosts.forEach((host, i) => {
+        addHostRowToModal(host.name, host.url);
+      });
+
+      modal.classList.remove('hidden');
+    }
+
+    function hideSettings() {
+      document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    function addHostRow() {
+      addHostRowToModal('', '');
+    }
+
+    function addHostRowToModal(name, url) {
+      const container = document.getElementById('modal-hosts');
+      const row = document.createElement('div');
+      row.className = 'modal-host-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Name (e.g., macbook)" value="${escapeHtml(name)}" class="host-name-input">
+        <input type="text" placeholder="URL (e.g., http://hostname:9999)" value="${escapeHtml(url)}" class="host-url-input">
+        <button class="btn btn-remove" onclick="this.parentElement.remove()">Remove</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function saveSettings() {
+      const rows = document.querySelectorAll('.modal-host-row');
+      const newHosts = [];
+
+      rows.forEach(row => {
+        const name = row.querySelector('.host-name-input').value.trim();
+        const url = row.querySelector('.host-url-input').value.trim();
+        if (name && url) {
+          newHosts.push({ name, url });
+        }
+      });
+
+      if (newHosts.length === 0) {
+        alert('Please add at least one host');
+        return;
+      }
+
+      // Clear old timers
+      hostStates.forEach(state => {
+        if (state.refreshTimer) clearTimeout(state.refreshTimer);
+      });
+
+      // Update hosts
+      hosts = newHosts;
+      saveHosts();
+
+      // Reset states for new hosts
+      const newStates = new Map();
+      hosts.forEach(host => {
+        const existing = hostStates.get(host.url);
+        newStates.set(host.url, existing || {
+          status: 'connecting',
+          data: null,
+          error: null,
+          lastFetch: null,
+          refreshTimer: null,
+          collapsed: false
+        });
+      });
+      hostStates = newStates;
+
+      // Re-render and fetch
+      document.getElementById('hosts-container').innerHTML = '';
+      hosts.forEach(host => {
+        renderHostSection(host);
+        fetchHost(host);
+      });
+
+      hideSettings();
+    }
+
+    function resetToDefaults() {
+      const container = document.getElementById('modal-hosts');
+      container.innerHTML = '';
+      DEFAULT_HOSTS.forEach(host => {
+        addHostRowToModal(host.name, host.url);
+      });
+    }
+
+    // Utilities
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+    }
+
+    function formatTime(date) {
+      const now = new Date();
+      const diff = Math.floor((now - date) / 1000);
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      return date.toLocaleTimeString();
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target.tagName === 'INPUT') return;
+
+      switch (e.key.toLowerCase()) {
+        case 'e':
+          expandAll();
+          break;
+        case 'c':
+          collapseAll();
+          break;
+        case 'r':
+          refreshAll();
+          break;
+        case 's':
+          showSettings();
+          break;
+        case 'escape':
+          hideSettings();
+          break;
+      }
+    });
+
+    // Sort hosts by connection status (connected first, disconnected last)
+    function getSortedHosts() {
+      return [...hosts].sort((a, b) => {
+        const stateA = hostStates.get(a.url);
+        const stateB = hostStates.get(b.url);
+        const orderA = stateA?.status === 'connected' ? 0 : stateA?.status === 'connecting' ? 1 : 2;
+        const orderB = stateB?.status === 'connected' ? 0 : stateB?.status === 'connecting' ? 1 : 2;
+        return orderA - orderB;
+      });
+    }
+
+    // Re-render all hosts in sorted order
+    function rerenderAllHosts() {
+      const container = document.getElementById('hosts-container');
+      const sorted = getSortedHosts();
+
+      // Reorder DOM elements
+      sorted.forEach(host => {
+        const section = document.getElementById(`host-${encodeURIComponent(host.url)}`);
+        if (section) {
+          container.appendChild(section);
+        }
+      });
+    }
+
+    // Initialize
+    loadHosts();
+    hosts.forEach(host => {
+      renderHostSection(host);
+      fetchHost(host);
+    });
 
     // Live reload - listen for server file changes
     const liveReload = new EventSource('/api/live-reload');
