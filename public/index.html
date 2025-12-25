@@ -408,6 +408,24 @@
       opacity: 1;
     }
 
+    .stale-section.stale-with-servers {
+      background: #1a2a1a;
+      border-top-color: #2a4a2a;
+    }
+
+    .stale-section.stale-with-servers:hover {
+      background: #223a22;
+    }
+
+    .stale-section.stale-with-servers .stale-header {
+      color: #6a6;
+    }
+
+    .stale-with-servers-table {
+      opacity: 0.85;
+      background: rgba(30, 50, 30, 0.3);
+    }
+
     /* Settings modal */
     .modal-overlay {
       position: fixed;
@@ -601,7 +619,8 @@
             lastFetch: null,
             refreshTimer: null,
             collapsed: false,
-            staleCollapsed: true
+            staleServersCollapsed: false,  // Stale WITH servers: open by default
+            staleCollapsed: true            // Stale without servers: collapsed by default
           });
         }
       });
@@ -715,20 +734,29 @@
       }
 
       const now = Date.now();
-      const recentAgents = agents.filter(agent => {
+
+      // Categorize agents
+      const freshAgents = agents.filter(agent => {
         const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
         return (now - commitTime) < ONE_DAY_MS;
       });
-      const staleAgents = agents.filter(agent => {
+      const staleWithServers = agents.filter(agent => {
         const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
-        return (now - commitTime) >= ONE_DAY_MS;
+        return (now - commitTime) >= ONE_DAY_MS && agent.servers.length > 0;
+      });
+      const staleNoServers = agents.filter(agent => {
+        const commitTime = (agent.lastCommitTimestamp || 0) * 1000;
+        return (now - commitTime) >= ONE_DAY_MS && agent.servers.length === 0;
       });
 
-      // Sort by last commit timestamp descending
-      const sortedRecent = [...recentAgents].sort((a, b) =>
+      // Sort each category by last commit timestamp descending
+      const sortedFresh = [...freshAgents].sort((a, b) =>
         (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
       );
-      const sortedStale = [...staleAgents].sort((a, b) =>
+      const sortedStaleWithServers = [...staleWithServers].sort((a, b) =>
+        (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
+      );
+      const sortedStaleNoServers = [...staleNoServers].sort((a, b) =>
         (b.lastCommitTimestamp || 0) - (a.lastCommitTimestamp || 0)
       );
 
@@ -774,15 +802,18 @@
         `;
       };
 
-      const recentRows = sortedRecent.map(renderRow).join('');
-      const staleRows = sortedStale.map(renderRow).join('');
+      const freshRows = sortedFresh.map(renderRow).join('');
+      const staleWithServersRows = sortedStaleWithServers.map(renderRow).join('');
+      const staleNoServersRows = sortedStaleNoServers.map(renderRow).join('');
 
       const state = hostStates.get(host.url);
+      const staleServersCollapsed = state?.staleServersCollapsed === true; // Default OPEN
       const staleCollapsed = state?.staleCollapsed !== false; // Default collapsed
 
       let html = '';
 
-      if (sortedRecent.length > 0) {
+      // Section 1: Fresh repos
+      if (sortedFresh.length > 0) {
         html += `
           <table>
             <thead>
@@ -796,7 +827,7 @@
               </tr>
             </thead>
             <tbody>
-              ${recentRows}
+              ${freshRows}
             </tbody>
           </table>
         `;
@@ -804,18 +835,38 @@
         html += '<div class="no-agents">No recent repos</div>';
       }
 
-      if (sortedStale.length > 0) {
+      // Section 2: Stale repos WITH running servers (expanded by default)
+      if (sortedStaleWithServers.length > 0) {
+        html += `
+          <div class="stale-section stale-with-servers ${staleServersCollapsed ? 'collapsed' : ''}" onclick="toggleStaleServers('${host.url}')">
+            <div class="stale-header">
+              <span class="collapse-icon">&#9660;</span>
+              <span>Stale with Servers (${sortedStaleWithServers.length})</span>
+            </div>
+          </div>
+          ${!staleServersCollapsed ? `
+            <table class="stale-table stale-with-servers-table">
+              <tbody>
+                ${staleWithServersRows}
+              </tbody>
+            </table>
+          ` : ''}
+        `;
+      }
+
+      // Section 3: Stale repos WITHOUT servers (collapsed by default)
+      if (sortedStaleNoServers.length > 0) {
         html += `
           <div class="stale-section ${staleCollapsed ? 'collapsed' : ''}" onclick="toggleStale('${host.url}')">
             <div class="stale-header">
               <span class="collapse-icon">&#9660;</span>
-              <span>Stale Repos (${sortedStale.length})</span>
+              <span>Stale Repos (${sortedStaleNoServers.length})</span>
             </div>
           </div>
           ${!staleCollapsed ? `
             <table class="stale-table">
               <tbody>
-                ${staleRows}
+                ${staleNoServersRows}
               </tbody>
             </table>
           ` : ''}
@@ -835,12 +886,23 @@
       }
     }
 
-    // Toggle stale repos section
+    // Toggle stale repos section (no servers)
     function toggleStale(url) {
       event.stopPropagation();
       const state = hostStates.get(url);
       if (state) {
         state.staleCollapsed = !state.staleCollapsed;
+        const host = hosts.find(h => h.url === url);
+        if (host) renderHostSection(host);
+      }
+    }
+
+    // Toggle stale repos WITH servers section
+    function toggleStaleServers(url) {
+      event.stopPropagation();
+      const state = hostStates.get(url);
+      if (state) {
+        state.staleServersCollapsed = !state.staleServersCollapsed;
         const host = hosts.find(h => h.url === url);
         if (host) renderHostSection(host);
       }
@@ -936,6 +998,7 @@
           lastFetch: null,
           refreshTimer: null,
           collapsed: false,
+          staleServersCollapsed: false,
           staleCollapsed: true
         });
       });
