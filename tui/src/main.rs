@@ -148,6 +148,7 @@ struct App {
     col_width_name: usize,
     col_width_branch: usize,
     col_width_server: usize,
+    col_width_pr: usize,
 }
 
 impl App {
@@ -184,38 +185,57 @@ impl App {
             stale_servers_expanded,
             stale_repos_expanded,
             last_key: None,
-            col_width_name: 18,
-            col_width_branch: 14,
-            col_width_server: 18,
+            col_width_name: 10,   // Will grow dynamically based on content
+            col_width_branch: 6,
+            col_width_server: 10,
+            col_width_pr: 5,
         };
         app.rebuild_nav();
         app
     }
 
     fn recalc_column_widths(&mut self) {
-        let mut max_name = 8usize;
-        let mut max_branch = 6usize;
-        let mut max_server = 6usize;
+        // Minimum column widths (for headers/readability)
+        const MIN_NAME: usize = 10;
+        const MIN_BRANCH: usize = 6;
+        const MIN_SERVER: usize = 10;
+        const MIN_PR: usize = 5;
+        // Maximum column widths (to prevent excessive width)
+        const MAX_NAME: usize = 26;
+        const MAX_BRANCH: usize = 28;
+        const MAX_SERVER: usize = 30;
+        const MAX_PR: usize = 8;
+
+        let mut max_name = MIN_NAME;
+        let mut max_branch = MIN_BRANCH;
+        let mut max_server = MIN_SERVER;
+        let mut max_pr = MIN_PR;
 
         for host in &self.hosts {
             if let Some(data) = &host.data {
                 for agent in &data.agents {
-                    max_name = max_name.max(agent.id.len());
-                    max_branch = max_branch.max(agent.branch.len());
+                    max_name = max_name.max(agent.id.chars().count());
+                    max_branch = max_branch.max(agent.branch.chars().count());
                     if !agent.servers.is_empty() {
                         let server_str: String = agent.servers.iter()
                             .map(|s| format!("{}:{}", s.server_type, s.port))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        max_server = max_server.max(server_str.len());
+                        max_server = max_server.max(server_str.chars().count());
+                    }
+                    if let Some(pr) = &agent.pr {
+                        let pr_str = format!("#{}", pr.number);
+                        max_pr = max_pr.max(pr_str.chars().count());
                     }
                 }
             }
         }
 
-        self.col_width_name = max_name.min(25) + 1;
-        self.col_width_branch = max_branch.min(20) + 1;
-        self.col_width_server = max_server.min(25) + 1;
+        // Dynamic width: grow to fit content, but cap at maximum
+        self.col_width_name = max_name.min(MAX_NAME);
+        self.col_width_branch = max_branch.min(MAX_BRANCH);
+        self.col_width_server = max_server.min(MAX_SERVER);
+        self.col_width_pr = max_pr.min(MAX_PR);
     }
 
     fn rebuild_nav(&mut self) {
@@ -503,6 +523,17 @@ fn open_editor(path: &str) {
     let _ = Command::new(&editor).arg(path).spawn();
 }
 
+/// Truncate a string to fit within max_width characters, adding ellipsis if needed
+fn truncate_str(s: &str, max_width: usize) -> String {
+    if s.chars().count() <= max_width {
+        s.to_string()
+    } else if max_width > 1 {
+        format!("{}…", s.chars().take(max_width - 1).collect::<String>())
+    } else {
+        "…".to_string()
+    }
+}
+
 fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -581,20 +612,52 @@ fn draw(frame: &mut Frame, app: &App) {
                 if let Some(agent) = app.hosts.get(*host_idx)
                     .and_then(|h| h.data.as_ref())
                     .and_then(|d| d.agents.get(*idx)) {
-                    let server_str = if agent.servers.is_empty() {
+                    // Build server string with +N for overflow
+                    let server_display = if agent.servers.is_empty() {
                         String::new()
                     } else {
-                        agent.servers.iter()
+                        let max_width = app.col_width_server;
+                        let server_strs: Vec<String> = agent.servers.iter()
                             .map(|s| format!("{}:{}", s.server_type, s.port))
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                            .collect();
+
+                        let mut result = String::new();
+                        let mut shown = 0;
+                        for (i, s) in server_strs.iter().enumerate() {
+                            let remaining = agent.servers.len() - i - 1;
+                            let suffix = if remaining > 0 { format!(", +{}", remaining) } else { String::new() };
+                            let candidate = if result.is_empty() {
+                                format!("{}{}", s, suffix)
+                            } else {
+                                format!("{}, {}{}", result, s, suffix)
+                            };
+
+                            if candidate.chars().count() <= max_width {
+                                if !result.is_empty() {
+                                    result.push_str(", ");
+                                }
+                                result.push_str(s);
+                                shown += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let hidden = agent.servers.len() - shown;
+                        if hidden > 0 {
+                            result.push_str(&format!(", +{}", hidden));
+                        }
+                        result
                     };
 
-                    let commit = if agent.last_commit.len() > 25 {
-                        format!("{}...", &agent.last_commit[..22])
-                    } else {
-                        agent.last_commit.clone()
-                    };
+                    // Truncate values that exceed column width (char-safe)
+                    let name_display = truncate_str(&agent.id, app.col_width_name);
+                    let branch_display = truncate_str(&agent.branch, app.col_width_branch);
+                    let pr_display = agent.pr.as_ref()
+                        .map(|pr| format!("#{}", pr.number))
+                        .unwrap_or_default();
+                    let commit_width = 25;
+                    let commit = truncate_str(&agent.last_commit, commit_width);
 
                     let server_indicator = if !agent.servers.is_empty() {
                         Span::styled("● ", Style::default().fg(Color::Green))
@@ -606,18 +669,27 @@ fn draw(frame: &mut Frame, app: &App) {
                         Span::raw("  "),
                         server_indicator,
                         Span::styled(
-                            format!("{:<width$} ", agent.id, width = app.col_width_name),
+                            format!("{:<width$}", name_display, width = app.col_width_name),
                             Style::default().fg(Color::Cyan),
                         ),
+                        Span::raw(" "),
                         Span::styled(
-                            format!("{:<width$} ", agent.branch, width = app.col_width_branch),
+                            format!("{:<width$}", branch_display, width = app.col_width_branch),
                             Style::default().fg(Color::LightMagenta),
                         ),
+                        Span::raw(" "),
                         Span::styled(
-                            format!("{:<width$} ", server_str, width = app.col_width_server),
+                            format!("{:<width$}", pr_display, width = app.col_width_pr),
+                            Style::default().fg(Color::Blue),
+                        ),
+                        Span::raw(" "),
+                        Span::styled(
+                            format!("{:<width$}", server_display, width = app.col_width_server),
                             Style::default().fg(Color::Yellow),
                         ),
-                        Span::raw(format!("{:<20} ", commit)),
+                        Span::raw(" "),
+                        Span::raw(format!("{:<width$}", commit, width = commit_width)),
+                        Span::raw(" "),
                         Span::styled(
                             agent.last_commit_time.clone(),
                             Style::default().fg(Color::DarkGray),
@@ -1483,5 +1555,42 @@ url = "http://c-5002.example.com:9999"
                 NavItem::StaleRepo(h, r) => { assert_eq!(*h, 0); assert_eq!(*r, 0); }
             }
         }
+    }
+
+    // ==================== String Truncation Tests ====================
+
+    #[test]
+    fn test_truncate_str_short() {
+        // String shorter than max width should be unchanged
+        assert_eq!(truncate_str("hello", 10), "hello");
+        assert_eq!(truncate_str("test", 4), "test");
+    }
+
+    #[test]
+    fn test_truncate_str_exact() {
+        // String exactly at max width should be unchanged
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_long() {
+        // String longer than max width should be truncated with ellipsis
+        assert_eq!(truncate_str("feature/cloudflare-deploy", 20), "feature/cloudflare-…");
+        assert_eq!(truncate_str("very-long-branch-name", 10), "very-long…");
+    }
+
+    #[test]
+    fn test_truncate_str_unicode() {
+        // Should handle unicode characters properly
+        assert_eq!(truncate_str("héllo", 5), "héllo");
+        assert_eq!(truncate_str("héllo world", 6), "héllo…");
+    }
+
+    #[test]
+    fn test_truncate_str_edge_cases() {
+        // Edge cases
+        assert_eq!(truncate_str("", 5), "");
+        assert_eq!(truncate_str("ab", 1), "…");
+        assert_eq!(truncate_str("a", 1), "a");
     }
 }

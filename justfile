@@ -46,8 +46,8 @@ tui-build:
     cd tui && cargo build --release
 
 # Install TUI binary to ~/.cargo/bin
-tui-install: tui-build
-    cp tui/target/release/agent-dashboard-tui ~/.cargo/bin/
+tui-install:
+    cargo install --path tui
 
 # Run TUI in dev mode
 tui-dev:
