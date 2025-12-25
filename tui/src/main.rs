@@ -93,7 +93,6 @@ enum NavItem {
 enum OverlayMode {
     None,
     Help,
-    Search,
     ServerPicker(Vec<Server>),
 }
 
@@ -102,7 +101,7 @@ struct App {
     nav_items: Vec<NavItem>,
     selected: usize,
     filter: String,
-    search_input: String,
+    searching: bool,  // Live search mode
     overlay: OverlayMode,
     server_picker_state: ListState,
     host_expanded: HashMap<usize, bool>,
@@ -142,7 +141,7 @@ impl App {
             nav_items: vec![],
             selected: 0,
             filter: String::new(),
-            search_input: String::new(),
+            searching: false,
             overlay: OverlayMode::None,
             server_picker_state: ListState::default(),
             host_expanded,
@@ -400,11 +399,6 @@ impl App {
         }
     }
 
-    fn apply_search_filter(&mut self) {
-        self.filter = self.search_input.clone();
-        self.rebuild_nav();
-    }
-
     fn open_server_picker(&mut self) {
         if let Some(agent) = self.get_selected_agent() {
             if agent.servers.len() > 1 {
@@ -484,18 +478,20 @@ fn draw(frame: &mut Frame, app: &App) {
         .split(frame.area());
 
     // Header with search/filter
-    let header = if !app.filter.is_empty() {
+    let header = if app.searching || !app.filter.is_empty() {
+        let cursor = if app.searching { "_" } else { "" };
         Line::from(vec![
-            Span::styled("filter> ", Style::default().fg(Color::Yellow)),
-            Span::styled(&app.filter, Style::default().fg(Color::Yellow)),
+            Span::styled("/", Style::default().fg(Color::Yellow)),
+            Span::styled(&app.filter, Style::default().fg(Color::White)),
+            Span::styled(cursor, Style::default().fg(Color::Yellow)),
             Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Esc:clear  /:search", Style::default().fg(Color::DarkGray)),
+            Span::styled("type to filter  Esc:clear  Enter:done", Style::default().fg(Color::DarkGray)),
         ])
     } else {
         Line::from(vec![
             Span::styled("agent-dashboard", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
-            Span::styled("/:search  ?:help  q:quit", Style::default().fg(Color::DarkGray)),
+            Span::styled("/:search  ?:help  q:quit  1-9:host", Style::default().fg(Color::DarkGray)),
         ])
     };
     frame.render_widget(Paragraph::new(header), chunks[0]);
@@ -661,7 +657,6 @@ fn draw(frame: &mut Frame, app: &App) {
     // Overlays
     match &app.overlay {
         OverlayMode::Help => draw_help_overlay(frame),
-        OverlayMode::Search => draw_search_overlay(frame, &app.search_input),
         OverlayMode::ServerPicker(servers) => draw_server_picker(frame, servers, &app.server_picker_state),
         OverlayMode::None => {}
     }
@@ -685,7 +680,7 @@ fn draw_help_overlay(frame: &mut Frame) {
     r / R                Refresh host / all hosts
 
   SEARCH
-    /                    Open search popup
+    /                    Start typing to filter
     Esc                  Clear filter
 
   UTILITY
@@ -709,37 +704,6 @@ fn draw_help_overlay(frame: &mut Frame) {
 
     frame.render_widget(Clear, area);
     frame.render_widget(popup, area);
-}
-
-fn draw_search_overlay(frame: &mut Frame, input: &str) {
-    let popup_width = 50;
-    let popup_height = 5;
-    let area = frame.area();
-    let x = (area.width.saturating_sub(popup_width)) / 2;
-    let y = (area.height.saturating_sub(popup_height)) / 2;
-    let popup_area = Rect::new(x, y, popup_width, popup_height);
-
-    let inner = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
-        .margin(1)
-        .split(popup_area);
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Search ")
-        .style(Style::default().bg(Color::Black));
-
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(block, popup_area);
-
-    let search_line = Paragraph::new(format!("{}_", input))
-        .style(Style::default().fg(Color::Yellow));
-    frame.render_widget(search_line, inner[0]);
-
-    let hint = Paragraph::new("Enter: apply  Esc: cancel")
-        .style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(hint, inner[2]);
 }
 
 fn draw_server_picker(frame: &mut Frame, servers: &[Server], state: &ListState) {
@@ -837,30 +801,34 @@ async fn main() -> Result<()> {
                     continue;
                 }
 
-                // Handle overlays first
+                // Handle live search mode first
+                if app.searching {
+                    match key.code {
+                        KeyCode::Esc => {
+                            app.filter.clear();
+                            app.searching = false;
+                            app.rebuild_nav();
+                        }
+                        KeyCode::Enter => {
+                            app.searching = false;
+                        }
+                        KeyCode::Backspace => {
+                            app.filter.pop();
+                            app.rebuild_nav();
+                        }
+                        KeyCode::Char(c) => {
+                            app.filter.push(c);
+                            app.rebuild_nav();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // Handle overlays
                 match &app.overlay {
                     OverlayMode::Help => {
                         app.overlay = OverlayMode::None;
-                        continue;
-                    }
-                    OverlayMode::Search => {
-                        match key.code {
-                            KeyCode::Esc => {
-                                app.search_input.clear();
-                                app.overlay = OverlayMode::None;
-                            }
-                            KeyCode::Enter => {
-                                app.apply_search_filter();
-                                app.overlay = OverlayMode::None;
-                            }
-                            KeyCode::Backspace => {
-                                app.search_input.pop();
-                            }
-                            KeyCode::Char(c) => {
-                                app.search_input.push(c);
-                            }
-                            _ => {}
-                        }
                         continue;
                     }
                     OverlayMode::ServerPicker(servers) => {
@@ -938,8 +906,7 @@ async fn main() -> Result<()> {
                     }
                     KeyCode::Enter => app.toggle_current(),
                     KeyCode::Char('/') => {
-                        app.search_input = app.filter.clone();
-                        app.overlay = OverlayMode::Search;
+                        app.searching = true;
                     }
                     KeyCode::Char('o') => {
                         if let Some(agent) = app.get_selected_agent() {
