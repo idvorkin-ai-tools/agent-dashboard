@@ -66,22 +66,39 @@ function getRunningServers(agentDirs: string[]): Map<string, Server[]> {
   }
 
   // Get all listening TCP ports with their PIDs
+  // Try lsof first, fall back to ss
   const lsofOutput = exec('lsof -i -P -n 2>/dev/null | grep LISTEN || true');
-  if (!lsofOutput) return serversByDir;
+  const ssOutput = !lsofOutput ? exec('ss -tlnp 2>/dev/null | grep LISTEN || true') : '';
 
   const portToPid = new Map<number, number>();
 
-  for (const line of lsofOutput.split('\n')) {
-    const parts = line.split(/\s+/);
-    if (parts.length < 9) continue;
+  if (lsofOutput) {
+    // Parse lsof output: node    12345  user  ...  TCP *:9999 (LISTEN)
+    for (const line of lsofOutput.split('\n')) {
+      const parts = line.split(/\s+/);
+      if (parts.length < 9) continue;
 
-    const pid = parseInt(parts[1], 10);
-    const portMatch = parts[8]?.match(/:(\d+)$/);
-    if (portMatch) {
-      const port = parseInt(portMatch[1], 10);
-      portToPid.set(port, pid);
+      const pid = parseInt(parts[1], 10);
+      const portMatch = parts[8]?.match(/:(\d+)$/);
+      if (portMatch) {
+        const port = parseInt(portMatch[1], 10);
+        portToPid.set(port, pid);
+      }
+    }
+  } else if (ssOutput) {
+    // Parse ss output: LISTEN  0  511  0.0.0.0:9999  0.0.0.0:*  users:(("node",pid=12345,fd=29))
+    for (const line of ssOutput.split('\n')) {
+      const portMatch = line.match(/(?:0\.0\.0\.0|::|\*):(\d+)/);
+      const pidMatch = line.match(/pid=(\d+)/);
+      if (portMatch && pidMatch) {
+        const port = parseInt(portMatch[1], 10);
+        const pid = parseInt(pidMatch[1], 10);
+        portToPid.set(port, pid);
+      }
     }
   }
+
+  if (portToPid.size === 0) return serversByDir;
 
   // For each PID, find its working directory
   for (const [port, pid] of portToPid) {
