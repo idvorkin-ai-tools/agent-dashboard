@@ -11,6 +11,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    env,
     fs,
     io,
     path::PathBuf,
@@ -19,7 +20,7 @@ use std::{
 };
 
 // Types matching the server API
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Server {
     #[serde(rename = "type")]
@@ -28,13 +29,15 @@ struct Server {
     url: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GitHubLinks {
     branch_url: Option<String>,
+    diff_url: Option<String>,
+    last_commit_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentInfo {
     id: String,
@@ -47,7 +50,7 @@ struct AgentInfo {
     github: Option<GitHubLinks>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScanResult {
     agents: Vec<AgentInfo>,
@@ -423,12 +426,12 @@ fn load_config() -> Vec<HostConfig> {
         }
     }
 
-    // Default hosts (same as web)
+    // Default hosts (Tailscale hostnames use capital C)
     vec![
-        HostConfig { name: "c-5001".to_string(), url: "http://c-5001:9999".to_string() },
-        HostConfig { name: "c-5002".to_string(), url: "http://c-5002:9999".to_string() },
-        HostConfig { name: "c-5003".to_string(), url: "http://c-5003:9999".to_string() },
-        HostConfig { name: "c-5004".to_string(), url: "http://c-5004:9999".to_string() },
+        HostConfig { name: "C-5001".to_string(), url: "http://C-5001:9999".to_string() },
+        HostConfig { name: "C-5002".to_string(), url: "http://C-5002:9999".to_string() },
+        HostConfig { name: "C-5003".to_string(), url: "http://C-5003:9999".to_string() },
+        HostConfig { name: "C-5004".to_string(), url: "http://C-5004:9999".to_string() },
     ]
 }
 
@@ -642,15 +645,15 @@ fn draw(frame: &mut Frame, app: &App) {
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::styled(":term ", Style::default().fg(Color::DarkGray)),
         Span::styled("o", Style::default().fg(Color::Yellow)),
-        Span::styled(":github ", Style::default().fg(Color::DarkGray)),
+        Span::styled(":branch ", Style::default().fg(Color::DarkGray)),
+        Span::styled("d", Style::default().fg(Color::Yellow)),
+        Span::styled(":diff ", Style::default().fg(Color::DarkGray)),
         Span::styled("s", Style::default().fg(Color::Yellow)),
         Span::styled(":server ", Style::default().fg(Color::DarkGray)),
         Span::styled("e", Style::default().fg(Color::Yellow)),
         Span::styled(":editor ", Style::default().fg(Color::DarkGray)),
         Span::styled("r", Style::default().fg(Color::Yellow)),
-        Span::styled(":refresh ", Style::default().fg(Color::DarkGray)),
-        Span::styled("1-9", Style::default().fg(Color::Yellow)),
-        Span::styled(":host", Style::default().fg(Color::DarkGray)),
+        Span::styled(":refresh", Style::default().fg(Color::DarkGray)),
     ]);
     frame.render_widget(Paragraph::new(status), chunks[2]);
 
@@ -675,6 +678,7 @@ fn draw_help_overlay(frame: &mut Frame) {
 
   ACTIONS
     o                    Open branch on GitHub
+    d                    Open diff vs main
     s                    Open server (picker if multiple)
     e                    Open in $EDITOR
     r / R                Refresh host / all hosts
@@ -762,13 +766,50 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let dump_mode = args.iter().any(|a| a == "--dump" || a == "-d");
+    let help_mode = args.iter().any(|a| a == "--help" || a == "-h");
+
+    if help_mode {
+        println!("agent-dashboard-tui - TUI for managing development environments");
+        println!();
+        println!("USAGE:");
+        println!("    agent-dashboard-tui [OPTIONS]");
+        println!();
+        println!("OPTIONS:");
+        println!("    -d, --dump    Fetch all hosts, print JSON, and exit (debug mode)");
+        println!("    -h, --help    Show this help message");
+        println!();
+        println!("CONFIG:");
+        println!("    ~/.config/agent-dashboard/hosts.toml");
+        return Ok(());
+    }
+
+    let configs = load_config();
+
+    // Dump mode: fetch all hosts, print JSON, exit
+    if dump_mode {
+        let mut results: HashMap<String, Option<ScanResult>> = HashMap::new();
+        for config in &configs {
+            match fetch_host_data(&config.url).await {
+                Ok(data) => {
+                    results.insert(config.name.clone(), Some(data));
+                }
+                Err(e) => {
+                    eprintln!("Error fetching {}: {}", config.name, e);
+                    results.insert(config.name.clone(), None);
+                }
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&results)?);
+        return Ok(());
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let configs = load_config();
     let mut app = App::new(configs);
 
     // Initial fetch
@@ -912,6 +953,15 @@ async fn main() -> Result<()> {
                         if let Some(agent) = app.get_selected_agent() {
                             if let Some(github) = &agent.github {
                                 if let Some(url) = &github.branch_url {
+                                    open_browser(url);
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char('d') => {
+                        if let Some(agent) = app.get_selected_agent() {
+                            if let Some(github) = &agent.github {
+                                if let Some(url) = &github.diff_url {
                                     open_browser(url);
                                 }
                             }
