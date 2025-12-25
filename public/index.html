@@ -579,12 +579,12 @@
   </div>
 
   <script>
-    // Default hosts - c-5001 through c-5004 are tailscale hostnames
+    // Default hosts - C-5001 through C-5004 are tailscale hostnames (capital C)
     const DEFAULT_HOSTS = [
-      { name: 'c-5001', url: 'http://c-5001:9999' },
-      { name: 'c-5002', url: 'http://c-5002:9999' },
-      { name: 'c-5003', url: 'http://c-5003:9999' },
-      { name: 'c-5004', url: 'http://c-5004:9999' },
+      { name: 'C-5001', url: 'http://C-5001:9999' },
+      { name: 'C-5002', url: 'http://C-5002:9999' },
+      { name: 'C-5003', url: 'http://C-5003:9999' },
+      { name: 'C-5004', url: 'http://C-5004:9999' },
     ];
 
     const STORAGE_KEY = 'agent-dashboard-hosts';
@@ -787,10 +787,16 @@
               <span class="status ${statusClass}"></span>
               <span class="agent-id">${escapeHtml(agent.id)}</span>
             </td>
-            <td>${agent.github
-              ? `<a href="${agent.github.branchUrl}" target="_blank" class="branch">${escapeHtml(agent.branch)}</a>`
-              : `<span class="branch">${escapeHtml(agent.branch)}</span>`
-            }</td>
+            <td>
+              ${agent.github
+                ? `<a href="${agent.github.branchUrl}" target="_blank" class="branch">${escapeHtml(agent.branch)}</a>`
+                : `<span class="branch">${escapeHtml(agent.branch)}</span>`
+              }
+              ${agent.github?.diffUrl && agent.branch !== 'main' && agent.branch !== 'master'
+                ? `<a href="${agent.github.diffUrl}" target="_blank" class="github-link diff" title="View diff vs main">diff</a>`
+                : ''
+              }
+            </td>
             <td>${prHtml}</td>
             <td><div class="server-links">${serversHtml}</div></td>
             <td class="beads">${beadsHtml}</td>
