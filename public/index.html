@@ -788,7 +788,7 @@
               <span class="agent-id">${escapeHtml(agent.id)}</span>
             </td>
             <td>${agent.github
-              ? `<a href="${agent.github.diffUrl}" target="_blank" class="branch">${escapeHtml(agent.branch)}</a>`
+              ? `<a href="${agent.branch === 'main' || agent.branch === 'master' ? agent.github.commitsUrl : agent.github.diffUrl}" target="_blank" class="branch">${escapeHtml(agent.branch)}</a>`
               : `<span class="branch">${escapeHtml(agent.branch)}</span>`
             }</td>
             <td>${prHtml}</td>
