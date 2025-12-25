@@ -26,14 +26,18 @@ struct Server {
     #[serde(rename = "type")]
     server_type: String,
     port: u16,
+    pid: Option<u32>,
     url: String,
+    tailscale_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GitHubLinks {
+    repo_url: Option<String>,
     branch_url: Option<String>,
     diff_url: Option<String>,
+    commits_url: Option<String>,
     last_commit_url: Option<String>,
 }
 
@@ -42,12 +46,15 @@ struct GitHubLinks {
 struct AgentInfo {
     id: String,
     directory: String,
+    repo: Option<String>,
     branch: String,
     servers: Vec<Server>,
     last_commit: String,
+    last_commit_hash: Option<String>,
     last_commit_time: String,
     last_commit_timestamp: i64,
     github: Option<GitHubLinks>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
