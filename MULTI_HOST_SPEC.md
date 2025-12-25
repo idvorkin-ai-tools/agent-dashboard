@@ -2,14 +2,14 @@
 
 ## Overview
 
-Extend the web dashboard to aggregate and display repositories from multiple agent-dashboard instances running on different hosts (e.g., local machine, macbook, devbox).
+Web dashboard that connects to multiple agent-dashboard instances running on different hosts, displaying each as a collapsible section.
 
 ## Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Host 1    │     │   Host 2    │     │   Host 3    │
-│  (local)    │     │  (macbook)  │     │  (devbox)   │
+│  (c-5001)   │     │  (c-5002)   │     │  (c-5003)   │
 │  :9999      │     │  :9999      │     │  :9999      │
 └─────┬───────┘     └─────┬───────┘     └─────┬───────┘
       │                   │                   │
@@ -25,30 +25,21 @@ The browser connects directly to each host's agent-dashboard API.
 
 ## Configuration
 
-### URL Parameters
-
-Configure hosts via URL query parameters:
-
-```
-http://localhost:9999/?hosts=local:9999,macbook.ts.net:9999,devbox.ts.net:9999
-```
-
-Or with explicit names:
-
-```
-http://localhost:9999/?hosts=local|localhost:9999,mac|macbook.ts.net:9999,dev|devbox.ts.net:9999
-```
-
 ### LocalStorage Persistence
 
 ```javascript
-// Saved automatically when hosts configured
-localStorage.setItem('agent-dashboard-hosts', JSON.stringify([
-  { name: 'local', url: 'http://localhost:9999' },
-  { name: 'macbook', url: 'http://macbook.ts.net:9999' },
-  { name: 'devbox', url: 'http://devbox.ts.net:9999' }
-]));
+// Key: 'agent-dashboard-hosts'
+[
+  { name: 'c-5001', url: 'http://c-5001:9999' },
+  { name: 'c-5002', url: 'http://c-5002:9999' },
+  { name: 'c-5003', url: 'http://c-5003:9999' },
+  { name: 'c-5004', url: 'http://c-5004:9999' }
+]
 ```
+
+### Default Hosts
+
+If no localStorage config exists, defaults to `c-5001` through `c-5004` on port 9999.
 
 ## Web UI Layout
 
@@ -56,85 +47,85 @@ localStorage.setItem('agent-dashboard-hosts', JSON.stringify([
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│ Agent Dashboard    [local ▼] [macbook ●] [devbox ✗]    [+ Add Host] [Settings] │
+│ Agent Dashboard    [Expand All] [Collapse All] [Refresh All] [Settings]        │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Tabs/buttons for each host
-- `●` = active/connected, `✗` = disconnected
-- Current host highlighted
-- "All" view option to show aggregated
+### Host Sections (Stacked Vertically)
+
+Each host is a collapsible section:
+
+```
+┌─ c-5001 (http://c-5001:9999) ────────────── 5 repos, 2 active │ Last: 5s ago ● Connected ─┐
+│ ┌─────────────────────────────────────────────────────────────────────────────────────────┐ │
+│ │ Agent              Branch       PR    Servers           Beads         Last Commit       │ │
+│ │ agent-dashboard    main         -     jekyll:4000       -             fix: stuff (2h)   │ │
+│ │ blog               feat/new     #42   vite:5173         3 open        feat: new (1h)    │ │
+│ └─────────────────────────────────────────────────────────────────────────────────────────┘ │
+│ ┌─ Stale with Servers (1) ────────────────────────────────────────────────────────────────┐ │
+│ │ old-project        main         -     next:3000         -             update (3d)       │ │
+│ └─────────────────────────────────────────────────────────────────────────────────────────┘ │
+│ ▶ Stale Repos (12)                                                                          │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### Host Status Indicators
 
-| Icon | Meaning |
-|------|---------|
-| `●` (green) | Connected, data fresh |
-| `○` (yellow) | Connected, data stale (>60s) |
-| `✗` (red) | Disconnected |
-| `⟳` (blue) | Currently refreshing |
+| Indicator | Meaning |
+|-----------|---------|
+| `●` (green) | Connected |
+| `●` (yellow, pulsing) | Connecting |
+| `●` (red) | Disconnected |
 
-### Repository List
+### Repository Sections (per host)
 
-When viewing single host:
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Name              Branch          Status    Servers          Actions        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ agent-dashboard   main            idle      -                [↗] [⚙]       │
-│ blog              feat/new        ● active  vite:5173        [↗] [🌐] [⚙]  │
-│ settings          main            idle      -                [↗] [⚙]       │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+1. **Fresh repos** - Commits < 1 day old (always shown)
+2. **Stale with Servers** - Commits >= 1 day BUT has running servers (expanded by default, green tint)
+3. **Stale Repos** - Commits >= 1 day, no servers (collapsed by default)
 
-When viewing "All Hosts":
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Host      Name              Branch      Status    Servers      Actions      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ local     agent-dashboard   main        idle      -            [↗] [⚙]     │
-│ local     blog              feat/new    ● active  vite:5173    [↗] [🌐]    │
-│ macbook   settings          main        idle      -            [↗] [⚙]     │
-│ macbook   my-project        dev         ● active  next:3000    [↗] [🌐]    │
-│ devbox    ml-experiment     train       ● active  jupyter:8888 [↗] [🌐]    │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### Table Columns
 
-### Action Buttons
+| Column | Description |
+|--------|-------------|
+| Agent | Repo name with status dot (green=active, gray=idle) |
+| Branch | Clickable link to GitHub diff (branch vs main) |
+| PR | PR number if exists, links to GitHub PR |
+| Servers | Server type and port, clickable links |
+| Beads | Open/WIP count if beads enabled |
+| Last Commit | Commit message + relative time |
 
-| Icon | Action | Description |
-|------|--------|-------------|
-| `↗` | GitHub | Open repository on GitHub |
-| `🌐` | Server | Open dev server URL |
-| `⚙` | Details | Expand details panel |
-| `📋` | PR | Open pull request |
+### Host Ordering
+
+- Connected hosts appear first
+- Connecting hosts in middle
+- Disconnected hosts pushed to bottom
 
 ## API Endpoints
 
-### Existing (No Changes)
+### Existing
 
 ```
-GET /api/agents     → ScanResult for this host
+GET /api/agents     → ScanResult with all repos
 GET /api/health     → { status: 'ok', timestamp: '...' }
 ```
 
-### New: Host Metadata
+### Host Metadata
 
 ```
 GET /api/host
 
 Response:
 {
-  "name": "macbook",           // Hostname or custom name
-  "version": "1.0.0",          // agent-dashboard version
-  "uptime": 3600,              // Seconds since start
-  "lastScan": "ISO8601",       // Last scan timestamp
-  "scanInterval": 30000,       // Scan interval in ms
-  "repoCount": 15              // Number of repos tracked
+  "name": "hostname",
+  "version": "1.0.0",
+  "uptime": 3600,
+  "lastScan": "ISO8601",
+  "scanInterval": 30000,    // Current interval (30s or 300s)
+  "repoCount": 15
 }
 ```
 
-### New: Force Refresh
+### Force Refresh
 
 ```
 POST /api/refresh
@@ -143,176 +134,78 @@ Response:
 {
   "status": "ok",
   "scannedAt": "ISO8601",
-  "duration": 1234            // Scan duration in ms
+  "duration": 1234
 }
 ```
 
-## Client-Side Implementation
+## Polling Strategy
 
-### Host Manager Class
+### Client → Host Polling
 
-```typescript
-interface HostConfig {
-  name: string;
-  url: string;
-}
+| Condition | Interval |
+|-----------|----------|
+| Host connected | 10 seconds |
+| Host disconnected | 60 seconds |
 
-interface HostState {
-  config: HostConfig;
-  status: 'connected' | 'disconnected' | 'refreshing';
-  lastSeen: Date | null;
-  data: ScanResult | null;
-  error: string | null;
-}
+### Server Background Scan
 
-class HostManager {
-  private hosts: Map<string, HostState>;
+| Condition | Interval |
+|-----------|----------|
+| Changes detected (new commits) | 30 seconds |
+| No changes | 5 minutes |
 
-  addHost(config: HostConfig): void;
-  removeHost(name: string): void;
-  refreshHost(name: string): Promise<void>;
-  refreshAll(): Promise<void>;
-  getAggregatedAgents(): AgentInfo[];  // All hosts combined
-}
-```
+### Rate Limit Optimization
 
-### Polling Strategy
+- Skip `gh pr view` for repos on main/master branches
+- Use `ss` command as fallback when `lsof` unavailable
 
-1. Poll each host independently every 30 seconds
-2. Stagger requests to avoid thundering herd
-3. Mark host as disconnected after 3 consecutive failures
-4. Exponential backoff on failures (30s → 60s → 120s)
-5. Reset backoff on successful connection
-
-### CORS Handling
-
-Each agent-dashboard server needs CORS headers:
-
-```typescript
-// Add to server.ts
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-});
-```
-
-## UI Features
-
-### Host Switcher
-
-- Dropdown or tab bar for switching between hosts
-- Keyboard shortcuts: `1`, `2`, `3` to switch
-- `A` for "All Hosts" aggregate view
-
-### Settings Modal
-
-```
-┌─ Settings ──────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│ Hosts:                                                                      │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ Name         URL                              Status        Actions     │ │
-│ │ local        http://localhost:9999            ● Connected   [Test] [✗]  │ │
-│ │ macbook      http://macbook.ts.net:9999       ● Connected   [Test] [✗]  │ │
-│ │ devbox       http://devbox.ts.net:9999        ✗ Disconnected[Test] [✗]  │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                             │
-│ [+ Add Host]                                                                │
-│                                                                             │
-│ Refresh interval: [30s ▼]                                                   │
-│                                                                             │
-│                                           [Cancel]  [Save]                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Add Host Modal
-
-```
-┌─ Add Host ──────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│ Name:  [devbox_______________]                                              │
-│                                                                             │
-│ URL:   [http://devbox.ts.net:9999_______]                                   │
-│                                                                             │
-│ [Test Connection]   Status: ● Connected (15 repos)                          │
-│                                                                             │
-│                                           [Cancel]  [Add]                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| `1-9` | Switch to host N |
-| `a` | Show all hosts aggregate |
-| `r` | Refresh current host |
-| `R` | Refresh all hosts |
-| `/` | Focus search/filter |
-| `?` | Show keyboard shortcuts help |
-| `s` | Open settings |
+| `e` | Expand all hosts |
+| `c` | Collapse all hosts |
+| `r` | Refresh all hosts |
+| `s` | Open settings modal |
+| `Esc` | Close settings modal |
 
-## Data Aggregation
-
-### All Hosts View
-
-When showing all hosts:
-1. Combine all agents from all connected hosts
-2. Add `hostName` field to each agent for display
-3. Sort by: host name, then repo name (default)
-4. Allow sorting by any column
-
-### Conflict Resolution
-
-If same repo name exists on multiple hosts:
-- Show both, distinguished by host column
-- In aggregate view, group by host first
-
-## Error States
-
-### Host Disconnected
+## Settings Modal
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ⚠ Cannot connect to macbook (http://macbook.ts.net:9999)                   │
-│   Last seen: 5 minutes ago                                                  │
-│   Error: Connection refused                                                 │
-│   [Retry Now]  [Remove Host]                                               │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─ Configure Hosts ───────────────────────────────────────────────────┐
+│                                                                     │
+│ [Name input] [URL input] [Remove]                                   │
+│ [Name input] [URL input] [Remove]                                   │
+│ [Name input] [URL input] [Remove]                                   │
+│                                                                     │
+│ [+ Add Host]                                                        │
+│                                                                     │
+│ Enter host URLs like http://hostname:9999                           │
+│                                                                     │
+│ [Reset to Defaults]                    [Cancel] [Save]              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Partial Data
+## CORS
 
-If some hosts connected, some not:
-- Show connected hosts' data normally
-- Show warning banner for disconnected hosts
-- Still allow interaction with available data
-
-## URL Scheme
-
-### Share Configuration
-
-Generate shareable URL with host config:
+Server includes CORS headers for cross-origin requests:
 
 ```
-https://localhost:9999/?config=eyJob3N0cyI6W3sibmFtZSI6ImxvY2FsIi...
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type
 ```
 
-Base64-encoded JSON config for easy sharing.
+## Server Detection
 
-### Deep Links
+Detects running dev servers via:
+1. `lsof -i -P -n` (primary)
+2. `ss -tlnp` (fallback when lsof unavailable)
 
-Link directly to a specific repo on a specific host:
+Maps process working directory to agent directories.
 
-```
-https://localhost:9999/?host=macbook&repo=blog
-```
-
-## Mobile Considerations
-
-- Responsive layout: single column on narrow screens
-- Touch-friendly action buttons
-- Swipe between hosts
-- Pull-to-refresh on each host view
+Detected server types:
+- vite
+- next
+- playwright
+- jekyll (via ruby/bundle process)
