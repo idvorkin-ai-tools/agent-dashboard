@@ -540,6 +540,13 @@ fn draw(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
         .split(frame.area());
 
+    // Calculate available width for commit message (fills remaining space)
+    // Fixed parts: indent(2) + indicator(2) + name + branch + pr + server + separators(5) + time(10) + borders(2)
+    let total_width = frame.area().width as usize;
+    let fixed_width = 2 + 2 + app.col_width_name + 1 + app.col_width_branch + 1
+        + app.col_width_pr + 1 + app.col_width_server + 1 + 1 + 10 + 2;
+    let commit_width = total_width.saturating_sub(fixed_width).max(15);
+
     // Header with search/filter
     let header = if app.searching || !app.filter.is_empty() {
         let cursor = if app.searching { "_" } else { "" };
@@ -656,8 +663,9 @@ fn draw(frame: &mut Frame, app: &App) {
                     let pr_display = agent.pr.as_ref()
                         .map(|pr| format!("#{}", pr.number))
                         .unwrap_or_default();
-                    let commit_width = 25;
                     let commit = truncate_str(&agent.last_commit, commit_width);
+                    let time_width = 10;
+                    let time_display = truncate_str(&agent.last_commit_time, time_width);
 
                     let server_indicator = if !agent.servers.is_empty() {
                         Span::styled("● ", Style::default().fg(Color::Green))
@@ -691,7 +699,7 @@ fn draw(frame: &mut Frame, app: &App) {
                         Span::raw(format!("{:<width$}", commit, width = commit_width)),
                         Span::raw(" "),
                         Span::styled(
-                            agent.last_commit_time.clone(),
+                            format!("{:>width$}", time_display, width = time_width),
                             Style::default().fg(Color::DarkGray),
                         ),
                     ])

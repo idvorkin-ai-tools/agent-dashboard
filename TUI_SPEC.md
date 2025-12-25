@@ -20,25 +20,25 @@ OPTIONS:
 Single-pane stacked view with collapsible host sections:
 
 ```
-┌─ agent-dashboard ────────────────────────────────────────────────────────────┐
-│ ● ▼ C-5001 (5 repos, 2 active)                                               │
-│     agent-dashboard    main         jekyll:4000     fix: stuff        2h ago │
-│     blog               feat/new     vite:5173       feat: add         1h ago │
-│     settings           main                         chore: update     3h ago │
-│   ▼ Stale with Servers (1)                                                   │
-│       old-project      main         next:3000       update            3d ago │
-│   ▶ Stale Repos (8)                                                          │
-│                                                                              │
-│ ● ▼ C-5002 (3 repos, 0 active)                                               │
-│     my-project         main                         init              1d ago │
-│     other-repo         dev                          wip               2d ago │
-│   ▶ Stale Repos (5)                                                          │
-│                                                                              │
-│ ● ▶ C-5003 (disconnected)                                                    │
-│                                                                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ↑↓:nav o:branch d:diff p:pr s:server e:editor r:refresh                      │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─ agent-dashboard ─────────────────────────────────────────────────────────────────────────────┐
+│ ● ▼ C-5001 (5 repos, 2 active)                                                                │
+│   ● agent-dashboard    main         #42   jekyll:4000     fix: update dashboard stuff  2h ago │
+│   ● blog               feat/new     #15   vite:5173       feat: add new feature       1h ago │
+│     settings           main               chore: update dependencies                   3h ago │
+│   ▼ Stale with Servers (1)                                                                    │
+│   ● old-project        main               next:3000       update                       3d ago │
+│   ▶ Stale Repos (8)                                                                           │
+│                                                                                               │
+│ ● ▼ C-5002 (3 repos, 0 active)                                                                │
+│     my-project         main                               init project                 1d ago │
+│     other-repo         dev                                wip                          2d ago │
+│   ▶ Stale Repos (5)                                                                           │
+│                                                                                               │
+│ ● ▶ C-5003 (disconnected)                                                                     │
+│                                                                                               │
+├───────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ↑↓:nav o:branch d:diff p:pr s:server e:editor r:refresh                                       │
+└───────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Hierarchy
@@ -77,13 +77,14 @@ url = "http://c-5004.squeaker-teeth.ts.net:9999"
 
 ## Display Columns
 
-| Column | Description |
-|--------|-------------|
-| Name | Repo directory name |
-| Branch | Current git branch |
-| Server | Running server type:port (if any) |
-| Commit | Last commit message (truncated) |
-| Time | Relative time of last commit |
+| Column | Width | Description |
+|--------|-------|-------------|
+| Name | dynamic (max 26) | Repo directory name |
+| Branch | dynamic (max 28) | Current git branch |
+| PR | dynamic (max 8) | PR number if exists (e.g., `#42`) |
+| Server | dynamic (max 30) | Running server type:port, shows `+N` for overflow |
+| Commit | fills remaining | Last commit message (uses available space) |
+| Time | clipped last | Relative time of last commit |
 
 ## Status Indicators
 
